@@ -1,0 +1,20 @@
+# 1. Ignore Massive Datasets & Logs
+csv_files/
+pcap_files/
+zeek_output/
+data/
+*.csv
+*.pcap
+*.log
+
+# 2. Ignore Phase 2 Machine Learning Models (They are too big for GitHub)
+models/
+*.pkl
+*.h5
+*.joblib
+
+# 3. Ignore Python & Mac Trash Files
+__pycache__/
+*.pyc
+.DS_Store
+.ipynb_checkpoints/
