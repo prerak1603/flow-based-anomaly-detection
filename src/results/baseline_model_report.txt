@@ -1,0 +1,22 @@
+============================================================
+RANDOM FOREST BASELINE MODEL - TRAINING REPORT
+============================================================
+
+Date: 2026-04-13 23:43:04
+
+Dataset: /Users/preraknain/cic_ids_project/src/csv_output/nslkdd_converted.csv
+Total samples: 125,973
+Training samples: 100,778
+Testing samples: 25,195
+Number of features: 6
+Number of attack types: 23
+
+Training time: 1.9 seconds
+
+============================================================
+PERFORMANCE METRICS
+============================================================
+
+Overall Accuracy: 94.18%
+
+Detailed Report:

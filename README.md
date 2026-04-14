@@ -18,12 +18,29 @@ The current pipeline successfully ingests raw network traffic and engineers high
 * **The Stealth Detector:** Calculates the *Anomaly Differential* (the ratio of a single host's traffic against the global network volume) to expose stealth beacons hiding in heavy network traffic.
 
 ## 📂 Project Structure
-* `/csv_files/` - Cleaned dataset inputs (CIC-IDS, etc.)
+* `/csv_files/` - Cleaned dataset inputs (CIC-IDS, NSL-KDD, etc.)
 * `/pcap_files/` - Raw packet captures (e.g., Friday-WorkingHours.pcap)
 * `/zeek_output/` - Parsed Zeek logs (conn.log, dns.log, etc.)
-* `sliding_window_features.py` - The core Phase 1 feature extraction engine.
+* `/notebooks/sliding_window_features.py` - The core Phase 1 feature extraction engine.
+* `/notebooks/1_prepare_nslkdd.py` - Converts NSL-KDD into the universal conn.log-style schema.
+* `/notebooks/2_train_baseline_ids.py` - Trains a baseline Isolation Forest on engineered windows and saves reports/artifacts.
 
-## 🚧 Next Steps (Phase 2)
-* Engineer Machine Learning models (Isolation Forest / Autoencoders).
-* Train the models on the engineered Dual-Lens dataset.
-* Establish classification thresholds for anomaly alerting.
+## ▶️ Current Run Path
+1. Prepare the NSL-KDD training file:
+   `python3 notebooks/1_prepare_nslkdd.py`
+2. Train the baseline IDS model:
+   `python3 notebooks/2_train_baseline_ids.py`
+
+Artifacts are saved to:
+* `/data/models/baseline_isolation_forest.joblib`
+* `/data/reports/baseline_metrics.json`
+* `/data/reports/baseline_window_predictions.csv`
+
+By default, the training step uses network-centric windows at `1min`, `5min`, and `15min` scales for a practical baseline runtime. You can opt into heavier runs by setting:
+* `AEGIS_WINDOW_SIZES=10s,1min,5min,15min,1hr`
+* `AEGIS_ANALYSIS_TYPES=network,host`
+
+## 🚧 Next Steps
+* Improve window labeling so mixed windows preserve attack evidence instead of only taking the mode label.
+* Train supervised classifiers alongside anomaly detection for better recall on labeled datasets like NSL-KDD.
+* Revisit host-centric training after optimizing the sliding-window builder for per-host performance.
