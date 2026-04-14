@@ -1,46 +1,50 @@
-# Network Anomaly Detection Project
 # Aegis AI: Flow-Based Network Anomaly Detection 🛡️
 
 Aegis AI is a machine learning-based cybersecurity pipeline designed to detect both loud, volumetric network attacks (like DDoS and Port Scans) and stealthy, low-and-slow Advanced Persistent Threats (APTs).
 
 ## 🚀 Project Overview
-Traditional Intrusion Detection Systems (IDS) often rely on static signatures or purely volumetric aggregation, which fails to catch data exfiltration hidden in background noise. Aegis AI solves this by utilizing a **Dual-Lens Sliding Window Architecture**, processing raw network logs into dynamic mathematical baselines.
+Traditional Intrusion Detection Systems (IDS) often rely on static signatures, which fails to catch data exfiltration hidden in background noise. Aegis AI solves this by utilizing a **Dual-Lens Architecture**, processing raw network logs into dynamic mathematical baselines.
 
-## 🛠️ Phase 1: Feature Engineering Engine (Completed)
-The current pipeline successfully ingests raw network traffic and engineers highly contextual time-series features.
+---
 
-### Core Capabilities:
-* **Universal Schema Adapter:** Automatically detects and normalizes data from diverse sensors (Zeek `.log`, CIC-IDS `.csv`, NetFlow).
-* **Timestamp Standardization:** Converts disparate time formats (Unix epoch floats, formatted strings) into standard continuous Pandas datetime objects for exact Inter-Arrival Time (IAT) calculations.
+## ✅ Phase 1: Feature Engineering Engine (Completed)
+The current pipeline successfully ingests raw network traffic and engineers highly contextual features.
+- **Universal Schema Adapter:** Automatically detects and normalizes data from diverse sensors (Zeek, CIC-IDS, NSL-KDD).
+- **Stealth Detector:** Calculates the *Anomaly Differential* to expose beacons hiding in heavy background traffic.
+- **Dual-Lens Logic:** - *Macro-Lens:* Tracks global traffic states (bytes, port diversity).
+  - *Micro-Lens:* Profiles individual Source IP behavior (IAT, fan-out volume).
 
-* **Dual-Lens Architecture:** * **Macro-Lens (Network-Centric):** Aggregates global traffic state (total bytes, active connections, port diversity) to catch massive anomalies like DDoS.
-  * **Micro-Lens (Host-Centric):** Simultaneously profiles every individual Source IP (calculating host-specific IAT, fan-out, and byte volume).
-* **The Stealth Detector:** Calculates the *Anomaly Differential* (the ratio of a single host's traffic against the global network volume) to expose stealth beacons hiding in heavy network traffic.
+---
+
+## ⚖️ Phase 2: Supervised Baseline & Evaluation (Current)
+We have implemented a supervised **Random Forest** baseline to validate the engineered features.
+
+- **Current Accuracy:** 94.18%
+- **Top Feature:** `orig_bytes` (contributing 57.7% to the decision logic).
+- **Key Finding:** The model perfectly identifies volumetric DoS (Neptune) but highlights a critical need for synthetic oversampling (GANs) for rare attack classes like R2L/U2R.
+
+### 📊 Performance Artifacts
+Check `src/results/` for the latest visual evidence:
+- **Feature Importance:** Visualizing the "Macro-Lens" decision weights.
+- **Confusion Matrix:** Map of successful detections vs. false negatives.
+
+---
 
 ## 📂 Project Structure
-* `/csv_files/` - Cleaned dataset inputs (CIC-IDS, NSL-KDD, etc.)
-* `/pcap_files/` - Raw packet captures (e.g., Friday-WorkingHours.pcap)
-* `/zeek_output/` - Parsed Zeek logs (conn.log, dns.log, etc.)
-* `/notebooks/sliding_window_features.py` - The core Phase 1 feature extraction engine.
-* `/notebooks/1_prepare_nslkdd.py` - Converts NSL-KDD into the universal conn.log-style schema.
-* `/notebooks/2_train_baseline_ids.py` - Trains a baseline Isolation Forest on engineered windows and saves reports/artifacts.
+- `/notebooks/` - Research scripts for sliding window analysis and data prep.
+- `/src/models/` - Production-ready training scripts (Random Forest).
+- `/src/results/` - Model performance reports and visualization exports.
+- `/data/` - (Local only) Raw and processed datasets (NSL-KDD).
 
-## ▶️ Current Run Path
-1. Prepare the NSL-KDD training file:
-   `python3 notebooks/1_prepare_nslkdd.py`
-2. Train the baseline IDS model:
-   `python3 notebooks/2_train_baseline_ids.py`
+---
 
-Artifacts are saved to:
-* `/data/models/baseline_isolation_forest.joblib`
-* `/data/reports/baseline_metrics.json`
-* `/data/reports/baseline_window_predictions.csv`
+## ▶️ Running the Pipeline
+1. **Prepare Data:** `python3 notebooks/1_prepare_nslkdd.py`
+2. **Train Baseline:** `python3 src/models/train_baseline.py`
+3. **View Results:** Check `src/results/baseline_model_report.txt`
 
-By default, the training step uses network-centric windows at `1min`, `5min`, and `15min` scales for a practical baseline runtime. You can opt into heavier runs by setting:
-* `AEGIS_WINDOW_SIZES=10s,1min,5min,15min,1hr`
-* `AEGIS_ANALYSIS_TYPES=network,host`
+---
 
-## 🚧 Next Steps
-* Improve window labeling so mixed windows preserve attack evidence instead of only taking the mode label.
-* Train supervised classifiers alongside anomaly detection for better recall on labeled datasets like NSL-KDD.
-* Revisit host-centric training after optimizing the sliding-window builder for per-host performance.
+## 🚧 Phase 3: The Roadmap
+- **Generative Adversarial Networks (GANs):** Implementing a generator to synthesize rare attack samples for improved minority class recall.
+- **Behavioral Bridging:** Connecting the Phase 1 Sliding-Window builder with the Phase 2 classifier for real-time inference.
