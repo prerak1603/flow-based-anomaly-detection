@@ -1,50 +1,131 @@
-# Aegis AI: Flow-Based Network Anomaly Detection 🛡️
+# 🛡️ AegisAI — Flow-Based Network Anomaly Detection
 
-Aegis AI is a machine learning-based cybersecurity pipeline designed to detect both loud, volumetric network attacks (like DDoS and Port Scans) and stealthy, low-and-slow Advanced Persistent Threats (APTs).
-
-## 🚀 Project Overview
-Traditional Intrusion Detection Systems (IDS) often rely on static signatures, which fails to catch data exfiltration hidden in background noise. Aegis AI solves this by utilizing a **Dual-Lens Architecture**, processing raw network logs into dynamic mathematical baselines.
+A **dataset-agnostic AI-based Intrusion Detection System (IDS)** combining classical machine learning, generative AI, and transformer-based NLP for comprehensive threat detection across heterogeneous network telemetry.
 
 ---
 
-## ✅ Phase 1: Feature Engineering Engine (Completed)
-The current pipeline successfully ingests raw network traffic and engineers highly contextual features.
-- **Universal Schema Adapter:** Automatically detects and normalizes data from diverse sensors (Zeek, CIC-IDS, NSL-KDD).
-- **Stealth Detector:** Calculates the *Anomaly Differential* to expose beacons hiding in heavy background traffic.
-- **Dual-Lens Logic:** - *Macro-Lens:* Tracks global traffic states (bytes, port diversity).
-  - *Micro-Lens:* Profiles individual Source IP behavior (IAT, fan-out volume).
+## 🎯 Overview
+
+AegisAI tackles the limitations of traditional IDS solutions through four integrated phases:
+
+- **Universal schema adaptation** — works across Zeek, NSL-KDD, CIC-IDS-2017
+- **Hierarchical sliding-window analysis** — captures bursty, distributed, and low-and-slow attack patterns (10s – 60min)
+- **Multi-model ensemble classification** — Random Forest + XGBoost + LightGBM with stacking
+- **Generative AI augmentation** — WGAN-GP synthesizes rare attack samples to fix class imbalance
+- **NLP threat intelligence** — DistilBERT and Sentence-Transformers extend detection to unstructured threat text
 
 ---
 
-## ⚖️ Phase 2: Supervised Baseline & Evaluation (Current)
-We have implemented a supervised **Random Forest** baseline to validate the engineered features.
+## 🚀 Project Phases
 
-- **Current Accuracy:** 94.18%
-- **Top Feature:** `orig_bytes` (contributing 57.7% to the decision logic).
-- **Key Finding:** The model perfectly identifies volumetric DoS (Neptune) but highlights a critical need for synthetic oversampling (GANs) for rare attack classes like R2L/U2R.
+### ✅ Phase 1 — Feature Engineering Engine
+- Universal Schema Adapter for heterogeneous telemetry (Zeek, NSL-KDD, CIC-IDS)
+- Dual-Lens analysis: Macro (60s windows) + Micro (10s bursts)
+- Stealth Detector module for low-and-slow APT patterns
+- Hierarchical sliding-window feature aggregation
 
-### 📊 Performance Artifacts
-Check `src/results/` for the latest visual evidence:
-- **Feature Importance:** Visualizing the "Macro-Lens" decision weights.
-- **Confusion Matrix:** Map of successful detections vs. false negatives.
+### ✅ Phase 2 — Multi-Model Stacked Ensemble
+- **Base learners:** Random Forest, XGBoost, LightGBM
+- **Meta-learner:** Logistic Regression with 5-fold cross-validation
+- **Test accuracy: 99.5%** with strong rare-class recall
+  - DoS: 99.99% • Normal: 99.96% • Probe: 99.61%
+  - **R2L: 99%** • **U2R: 90%**
+- Cross-model feature importance validation
+
+### ✅ Phase 3 — GAN-Based Synthetic Attack Generation
+- **WGAN-GP** (Wasserstein GAN with Gradient Penalty) for stable training
+- Generates synthetic samples of rare attack classes (R2L, U2R)
+- Augmented training data improves minority-class recall in the Phase 2 ensemble
+- PCA visualization confirms synthetic samples align with real distribution
+
+### ✅ Phase 4 — NLP Threat Intelligence with Hugging Face
+- **DistilBERT fine-tuning** for 5-class threat categorization (DoS / Probe / R2L / U2R / APT)
+- **Zero-shot classification** with `facebook/bart-large-mnli`
+- **Semantic similarity search** using Sentence-Transformers (SBERT)
+- CVE / IP / port / protocol entity extraction for structured threat intelligence
 
 ---
 
-## 📂 Project Structure
-- `/notebooks/` - Research scripts for sliding window analysis and data prep.
-- `/src/models/` - Production-ready training scripts (Random Forest).
-- `/src/results/` - Model performance reports and visualization exports.
-- `/data/` - (Local only) Raw and processed datasets (NSL-KDD).
+## 🛠️ Tech Stack
+
+**Machine Learning & Deep Learning:**
+Python · PyTorch · TensorFlow · scikit-learn · XGBoost · LightGBM
+
+**Generative AI & NLP:**
+Hugging Face Transformers · Sentence-Transformers · DistilBERT · BART-MNLI · LangChain
+
+**Data Processing:**
+Pandas · NumPy · Zeek · NSL-KDD · CIC-IDS-2017
+
+**Visualization & Tools:**
+Matplotlib · Seaborn · Jupyter · Git · GitHub
 
 ---
 
-## ▶️ Running the Pipeline
-1. **Prepare Data:** `python3 notebooks/1_prepare_nslkdd.py`
-2. **Train Baseline:** `python3 src/models/train_baseline.py`
-3. **View Results:** Check `src/results/baseline_model_report.txt`
+## 📁 Repository Structure
+
+```
+cic_ids_project/
+├── notebooks/
+│   ├── 2b_ensemble_classifier.ipynb              # Phase 2: stacked ensemble
+│   ├── 3_gan_synthetic_attack_generation.ipynb   # Phase 3: WGAN-GP
+│   └── 4_huggingface_nlp_threat_intelligence.ipynb  # Phase 4: NLP pipeline
+├── src/
+│   ├── models/                                   # Trained classifiers
+│   │   ├── train_baseline.py                     # Random Forest baseline
+│   │   ├── phase2_stacking_ensemble.pkl          # Stacked ensemble
+│   │   ├── phase2_feature_scaler.pkl
+│   │   └── phase2_label_encoder.pkl
+│   ├── results/                                  # Charts & reports
+│   │   ├── ensemble_comparison.png
+│   │   ├── stacking_confusion_matrix.png
+│   │   ├── feature_importance_ensemble.png
+│   │   ├── gan_training_curves.png
+│   │   ├── gan_pca_comparison.png
+│   │   ├── gan_augmented_confusion_matrix.png
+│   │   └── threat_similarity_matrix.png
+│   └── preprocessing/
+├── csv_files/                                    # NSL-KDD dataset
+├── pcap_files/                                   # Raw packet captures
+└── tools/
+```
 
 ---
 
-## 🚧 Phase 3: The Roadmap
-- **Generative Adversarial Networks (GANs):** Implementing a generator to synthesize rare attack samples for improved minority class recall.
-- **Behavioral Bridging:** Connecting the Phase 1 Sliding-Window builder with the Phase 2 classifier for real-time inference.
+## 📊 Key Results
+
+| Model | Test Accuracy | Macro-F1 |
+|---|---|---|
+| Random Forest (baseline) | 94.18% | 0.62 |
+| XGBoost | 95.40% | 0.71 |
+| LightGBM | 95.10% | 0.70 |
+| Voting Ensemble | 95.80% | 0.73 |
+| **Stacking Ensemble (final)** | **99.50%** | **0.92** |
+
+**GAN-Augmented Ensemble** further improves rare-class recall on R2L and U2R — full results in `src/results/`.
+
+---
+
+## ⚙️ Setup & Run
+
+```bash
+# Clone the repo
+git clone https://github.com/prerak1603/flow-based-anomaly-detection.git
+cd flow-based-anomaly-detection
+
+# Install dependencies
+pip install scikit-learn xgboost lightgbm torch transformers sentence-transformers pandas numpy matplotlib seaborn
+
+# Run notebooks in order
+jupyter notebook notebooks/2b_ensemble_classifier.ipynb
+jupyter notebook notebooks/3_gan_synthetic_attack_generation.ipynb
+jupyter notebook notebooks/4_huggingface_nlp_threat_intelligence.ipynb
+```
+
+---
+
+## 👤 Author
+
+**Prerak Nain**
+B.Tech Computer Science · Bennett University, Greater Noida
+GitHub: [@prerak1603](https://github.com/prerak1603)
