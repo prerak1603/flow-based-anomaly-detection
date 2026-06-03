@@ -1,131 +1,146 @@
-# 🛡️ AegisAI — Flow-Based Network Anomaly Detection
+# Aegis AI — Network Intrusion Detection System 🛡️
 
-A **dataset-agnostic AI-based Intrusion Detection System (IDS)** combining classical machine learning, generative AI, and transformer-based NLP for comprehensive threat detection across heterogeneous network telemetry.
+A production-grade, 5-phase AI security platform that detects network intrusions using ensemble machine learning and exposes predictions via a Java Spring Boot REST API.
 
----
-
-## 🎯 Overview
-
-AegisAI tackles the limitations of traditional IDS solutions through four integrated phases:
-
-- **Universal schema adaptation** — works across Zeek, NSL-KDD, CIC-IDS-2017
-- **Hierarchical sliding-window analysis** — captures bursty, distributed, and low-and-slow attack patterns (10s – 60min)
-- **Multi-model ensemble classification** — Random Forest + XGBoost + LightGBM with stacking
-- **Generative AI augmentation** — WGAN-GP synthesizes rare attack samples to fix class imbalance
-- **NLP threat intelligence** — DistilBERT and Sentence-Transformers extend detection to unstructured threat text
+![Python](https://img.shields.io/badge/Python-3.10-blue) ![Java](https://img.shields.io/badge/Java-Spring%20Boot-green) ![Accuracy](https://img.shields.io/badge/Accuracy-96%25-brightgreen) ![ROC--AUC](https://img.shields.io/badge/ROC--AUC-0.98-brightgreen)
 
 ---
 
-## 🚀 Project Phases
+## 🎯 What It Does
+
+Traditional IDS rely on static signatures that miss stealthy, low-and-slow attacks. Aegis AI solves this by:
+- Training a stacking ensemble on 125,000+ real network flow records (NSL-KDD)
+- Generating synthetic attack traffic with GANs to handle extreme class imbalance
+- Classifying threat intelligence from text using NLP
+- Serving real-time predictions via a Spring Boot REST API with severity classification
+
+---
+
+## 📊 Final Model Performance
+
+| Metric | Score |
+|--------|-------|
+| Accuracy | **96%** |
+| Macro ROC-AUC | **0.98** |
+| Training Records | 125,000+ (NSL-KDD) |
+| Attack Classes | DoS, Probe, R2L, U2R, Normal |
+
+---
+
+## 🏗️ Architecture — 5 Phases
 
 ### ✅ Phase 1 — Feature Engineering Engine
-- Universal Schema Adapter for heterogeneous telemetry (Zeek, NSL-KDD, CIC-IDS)
-- Dual-Lens analysis: Macro (60s windows) + Micro (10s bursts)
-- Stealth Detector module for low-and-slow APT patterns
-- Hierarchical sliding-window feature aggregation
+- Universal schema adapter for Zeek, CIC-IDS, NSL-KDD formats
+- Dual-Lens architecture: Macro-Lens (global traffic) + Micro-Lens (per-IP behaviour)
+- Sliding window feature builder for temporal patterns
 
-### ✅ Phase 2 — Multi-Model Stacked Ensemble
-- **Base learners:** Random Forest, XGBoost, LightGBM
-- **Meta-learner:** Logistic Regression with 5-fold cross-validation
-- **Test accuracy: 99.5%** with strong rare-class recall
-  - DoS: 99.99% • Normal: 99.96% • Probe: 99.61%
-  - **R2L: 99%** • **U2R: 90%**
-- Cross-model feature importance validation
+### ✅ Phase 2 — Supervised Baseline
+- Random Forest baseline: 94.18% accuracy
+- Identified class imbalance (47,000:5 ratio for rare attacks) as critical bottleneck
 
-### ✅ Phase 3 — GAN-Based Synthetic Attack Generation
-- **WGAN-GP** (Wasserstein GAN with Gradient Penalty) for stable training
-- Generates synthetic samples of rare attack classes (R2L, U2R)
-- Augmented training data improves minority-class recall in the Phase 2 ensemble
-- PCA visualization confirms synthetic samples align with real distribution
+### ✅ Phase 3 — Synthetic Data Generation (WGAN-GP)
+- Wasserstein GAN with Gradient Penalty to synthesise rare attack traffic
+- Resolved extreme class imbalance enabling rare-class (R2L/U2R) detection
 
-### ✅ Phase 4 — NLP Threat Intelligence with Hugging Face
-- **DistilBERT fine-tuning** for 5-class threat categorization (DoS / Probe / R2L / U2R / APT)
-- **Zero-shot classification** with `facebook/bart-large-mnli`
-- **Semantic similarity search** using Sentence-Transformers (SBERT)
-- CVE / IP / port / protocol entity extraction for structured threat intelligence
+### ✅ Phase 4 — NLP Threat Intelligence Pipeline
+- HuggingFace DistilBERT fine-tuned for threat intelligence text classification
+- Classifies CVE descriptions and security reports into attack categories
+
+### ✅ Phase 5 — Java Spring Boot REST API
+- Spring Boot backend exposing 5 REST endpoints
+- Thread-safe prediction store using `ConcurrentLinkedDeque`
+- Java ↔ Python integration via `ProcessBuilder` calling trained `joblib` ensemble
+- 4-level severity output: `NONE / MEDIUM / HIGH / CRITICAL`
+
+---
+
+## 🔌 API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/predict` | Submit network flow, get threat prediction |
+| `GET` | `/api/history` | Retrieve last 100 predictions |
+| `GET` | `/api/stats` | Aggregated stats by severity class |
+| `DELETE` | `/api/history` | Clear prediction history |
+| `GET` | `/api/health` | Service health check |
+
+---
+
+## 🧠 ML Pipeline Details
+
+**Model:** Stacking Ensemble
+- Base learners: Random Forest + XGBoost + LightGBM
+- Meta-learner: Logistic Regression
+- Hyperparameter tuning: 90-trial Optuna search
+- Validation: 5-fold stratified cross-validation (SMOTE inside each fold to prevent data leakage)
+- Calibration: Platt scaling + per-class threshold optimisation
+
+---
+
+## 📂 Project Structure
+
+```
+flow-based-anomaly-detection/
+├── notebooks/          # Phase 1-2: Feature engineering & baseline
+├── src/
+│   ├── models/         # Ensemble training scripts
+│   ├── gan/            # WGAN-GP synthetic data generation
+│   ├── nlp/            # DistilBERT threat intelligence pipeline
+│   └── results/        # Performance reports & confusion matrices
+├── aegis-api/          # Java Spring Boot REST API
+│   └── src/main/java/
+│       ├── controller/
+│       ├── service/
+│       └── model/
+└── README.md
+```
+
+---
+
+## ▶️ Running the ML Pipeline
+
+```bash
+pip install -r requirements.txt
+python3 notebooks/1_prepare_nslkdd.py
+python3 src/models/train_ensemble.py
+cat src/results/ensemble_report.txt
+```
+
+## ▶️ Running the Spring Boot API
+
+```bash
+cd aegis-api
+mvn spring-boot:run
+# API at http://localhost:8080
+```
+
+**Sample request:**
+```json
+POST /api/predict
+{
+  "duration": 0,
+  "protocol_type": "tcp",
+  "service": "http",
+  "src_bytes": 232,
+  "dst_bytes": 8153
+}
+```
 
 ---
 
 ## 🛠️ Tech Stack
 
-**Machine Learning & Deep Learning:**
-Python · PyTorch · TensorFlow · scikit-learn · XGBoost · LightGBM
-
-**Generative AI & NLP:**
-Hugging Face Transformers · Sentence-Transformers · DistilBERT · BART-MNLI · LangChain
-
-**Data Processing:**
-Pandas · NumPy · Zeek · NSL-KDD · CIC-IDS-2017
-
-**Visualization & Tools:**
-Matplotlib · Seaborn · Jupyter · Git · GitHub
-
----
-
-## 📁 Repository Structure
-
-```
-cic_ids_project/
-├── notebooks/
-│   ├── 2b_ensemble_classifier.ipynb              # Phase 2: stacked ensemble
-│   ├── 3_gan_synthetic_attack_generation.ipynb   # Phase 3: WGAN-GP
-│   └── 4_huggingface_nlp_threat_intelligence.ipynb  # Phase 4: NLP pipeline
-├── src/
-│   ├── models/                                   # Trained classifiers
-│   │   ├── train_baseline.py                     # Random Forest baseline
-│   │   ├── phase2_stacking_ensemble.pkl          # Stacked ensemble
-│   │   ├── phase2_feature_scaler.pkl
-│   │   └── phase2_label_encoder.pkl
-│   ├── results/                                  # Charts & reports
-│   │   ├── ensemble_comparison.png
-│   │   ├── stacking_confusion_matrix.png
-│   │   ├── feature_importance_ensemble.png
-│   │   ├── gan_training_curves.png
-│   │   ├── gan_pca_comparison.png
-│   │   ├── gan_augmented_confusion_matrix.png
-│   │   └── threat_similarity_matrix.png
-│   └── preprocessing/
-├── csv_files/                                    # NSL-KDD dataset
-├── pcap_files/                                   # Raw packet captures
-└── tools/
-```
-
----
-
-## 📊 Key Results
-
-| Model | Test Accuracy | Macro-F1 |
-|---|---|---|
-| Random Forest (baseline) | 94.18% | 0.62 |
-| XGBoost | 95.40% | 0.71 |
-| LightGBM | 95.10% | 0.70 |
-| Voting Ensemble | 95.80% | 0.73 |
-| **Stacking Ensemble (final)** | **99.50%** | **0.92** |
-
-**GAN-Augmented Ensemble** further improves rare-class recall on R2L and U2R — full results in `src/results/`.
-
----
-
-## ⚙️ Setup & Run
-
-```bash
-# Clone the repo
-git clone https://github.com/prerak1603/flow-based-anomaly-detection.git
-cd flow-based-anomaly-detection
-
-# Install dependencies
-pip install scikit-learn xgboost lightgbm torch transformers sentence-transformers pandas numpy matplotlib seaborn
-
-# Run notebooks in order
-jupyter notebook notebooks/2b_ensemble_classifier.ipynb
-jupyter notebook notebooks/3_gan_synthetic_attack_generation.ipynb
-jupyter notebook notebooks/4_huggingface_nlp_threat_intelligence.ipynb
-```
+| Layer | Technology |
+|-------|-----------|
+| ML Pipeline | Python, XGBoost, LightGBM, Scikit-learn, PyTorch |
+| Data Augmentation | WGAN-GP (PyTorch) |
+| NLP | HuggingFace Transformers, DistilBERT |
+| Hyperparameter Tuning | Optuna |
+| REST API | Java 17, Spring Boot, Maven |
 
 ---
 
 ## 👤 Author
 
-**Prerak Nain**
-B.Tech Computer Science · Bennett University, Greater Noida
-GitHub: [@prerak1603](https://github.com/prerak1603)
+**Prerak Nain** — B.Tech CS, Bennett University (2023–2027)  
+[LinkedIn](https://linkedin.com/in/preraknain) · [GitHub](https://github.com/prerak1603)
