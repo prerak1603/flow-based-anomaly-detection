@@ -4,7 +4,7 @@ warnings.filterwarnings('ignore')
 import numpy as np
 import pandas as pd
 
-MODEL_DIR = "/Users/preraknain/cic_ids_project/src/models"
+MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 SEVERITY  = {"Normal":"NONE","DoS":"HIGH","Probe":"MEDIUM","R2L":"HIGH","U2R":"CRITICAL"}
 
 def main():

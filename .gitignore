@@ -20,3 +20,7 @@ __pycache__/
 .ipynb_checkpoints/
 src/models/distilbert_threat/
 src/models/distilbert_threat/checkpoint-*/
+
+# Exception: allow the small Aegis API model files needed for deployment
+!aegis-api/src/main/resources/models/
+!aegis-api/src/main/resources/models/*.pkl
