@@ -50,6 +50,8 @@ public class ThreatDetectionService {
                     featureVector
             );
             pb.redirectErrorStream(true);
+            System.out.println(">>> AEGIS: Running predict.py from dir: " + pb.directory());
+            System.out.println(">>> AEGIS: Command: " + pb.command());
             Process process = pb.start();
 
             String output = new String(process.getInputStream().readAllBytes()).trim();
@@ -57,13 +59,15 @@ public class ThreatDetectionService {
 
             if (exitCode != 0 || output.isEmpty()) {
                 // Fallback to simulation if Python model not available
-                return simulatePrediction(flow);
+                System.out.println(">>> AEGIS FALLBACK: " + e.getMessage());
+            return simulatePrediction(flow);
             }
 
             return parsePythonOutput(output);
 
         } catch (Exception e) {
             // Graceful fallback — model not loaded yet, simulate result
+            System.out.println(">>> AEGIS FALLBACK: " + e.getMessage());
             return simulatePrediction(flow);
         }
     }
