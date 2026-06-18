@@ -40,10 +40,8 @@ public class ThreatDetectionService {
      */
     public PredictionResult classify(NetworkFlow flow) {
         try {
-            // Build feature vector as comma-separated string for Python script
             String featureVector = buildFeatureVector(flow);
 
-            // Call Python model via ProcessBuilder
             ProcessBuilder pb = new ProcessBuilder(
                     "python3",
                     "predict.py",
@@ -57,17 +55,19 @@ public class ThreatDetectionService {
             String output = new String(process.getInputStream().readAllBytes()).trim();
             int exitCode  = process.waitFor();
 
+            System.out.println(">>> AEGIS: Exit code: " + exitCode);
+            System.out.println(">>> AEGIS: Output: " + output);
+
             if (exitCode != 0 || output.isEmpty()) {
-                // Fallback to simulation if Python model not available
-                System.out.println(">>> AEGIS FALLBACK: " + e.getMessage());
-            return simulatePrediction(flow);
+                System.out.println(">>> AEGIS: Non-zero exit or empty output, using fallback");
+                return simulatePrediction(flow);
             }
 
             return parsePythonOutput(output);
 
         } catch (Exception e) {
-            // Graceful fallback — model not loaded yet, simulate result
-            System.out.println(">>> AEGIS FALLBACK: " + e.getMessage());
+            System.out.println(">>> AEGIS FALLBACK exception: " + e.getMessage());
+            e.printStackTrace();
             return simulatePrediction(flow);
         }
     }
