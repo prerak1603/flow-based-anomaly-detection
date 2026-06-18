@@ -18,6 +18,7 @@ RUN pip3 install joblib scikit-learn xgboost lightgbm numpy pandas
 
 COPY --from=build /app/target/*.jar app.jar
 COPY src/main/resources/predict.py predict.py
+COPY src/main/resources/models/ models/
 
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

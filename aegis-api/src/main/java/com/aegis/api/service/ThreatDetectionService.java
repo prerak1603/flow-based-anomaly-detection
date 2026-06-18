@@ -46,7 +46,7 @@ public class ThreatDetectionService {
             // Call Python model via ProcessBuilder
             ProcessBuilder pb = new ProcessBuilder(
                     "python3",
-                    "src/main/resources/predict.py",
+                    "predict.py",
                     featureVector
             );
             pb.redirectErrorStream(true);
