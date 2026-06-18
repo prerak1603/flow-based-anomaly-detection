@@ -125,19 +125,55 @@ public class ThreatDetectionService {
     }
 
     private PredictionResult parsePythonOutput(String output) {
-        // Expected format: "threatClass,confidence,p0,p1,p2,p3,p4"
-        String[] parts = output.split(",");
-        String threatClass = parts[0];
-        double confidence  = Double.parseDouble(parts[1]);
+        // Python returns JSON: {"threat_class":"Normal","confidence":0.99,"probabilities":{"Normal":0.99,...},...}
+        try {
+            // Simple JSON parsing without external library
+            String threatClass = extractJsonString(output, "threat_class");
+            double confidence  = extractJsonDouble(output, "confidence");
 
-        Map<String, Double> probs = new LinkedHashMap<>();
-        for (int i = 0; i < THREAT_CLASSES.size() && (i + 2) < parts.length; i++) {
-            probs.put(THREAT_CLASSES.get(i), Double.parseDouble(parts[i + 2]));
+            Map<String, Double> probs = new LinkedHashMap<>();
+            String probsSection = output.substring(output.indexOf("\"probabilities\""));
+            for (String cls : THREAT_CLASSES) {
+                // Map Python class names (capitalized) to our lowercase keys
+                String capCls = cls.substring(0, 1).toUpperCase() + cls.substring(1);
+                double p = 0.0;
+                try { p = extractJsonDouble(probsSection, capCls); } catch (Exception ignored) {}
+                try { if (p == 0.0) p = extractJsonDouble(probsSection, cls); } catch (Exception ignored) {}
+                probs.put(cls, p);
+            }
+
+            // Normalize class name to lowercase
+            String normalizedClass = threatClass.toLowerCase();
+            if (normalizedClass.equals("normal")) normalizedClass = "normal";
+
+            PredictionResult result = new PredictionResult(normalizedClass, confidence, probs);
+            addToHistory(result);
+            return result;
+        } catch (Exception e) {
+            System.out.println(">>> AEGIS: JSON parse error: " + e.getMessage());
+            System.out.println(">>> AEGIS: Raw output was: " + output);
+            throw new RuntimeException("Failed to parse Python output", e);
         }
+    }
 
-        PredictionResult result = new PredictionResult(threatClass, confidence, probs);
-        addToHistory(result);
-        return result;
+    private String extractJsonString(String json, String key) {
+        String search = "\"" + key + "\"";
+        int keyIdx = json.indexOf(search);
+        int colonIdx = json.indexOf(":", keyIdx);
+        int startQuote = json.indexOf("\"", colonIdx + 1);
+        int endQuote = json.indexOf("\"", startQuote + 1);
+        return json.substring(startQuote + 1, endQuote);
+    }
+
+    private double extractJsonDouble(String json, String key) {
+        String search = "\"" + key + "\"";
+        int keyIdx = json.indexOf(search);
+        int colonIdx = json.indexOf(":", keyIdx);
+        int start = colonIdx + 1;
+        while (start < json.length() && json.charAt(start) == ' ') start++;
+        int end = start;
+        while (end < json.length() && (Character.isDigit(json.charAt(end)) || json.charAt(end) == '.' || json.charAt(end) == '-' || json.charAt(end) == 'E' || json.charAt(end) == 'e')) end++;
+        return Double.parseDouble(json.substring(start, end));
     }
 
     /**
