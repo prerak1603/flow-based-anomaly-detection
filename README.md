@@ -1,4 +1,4 @@
-# 🛡️ Aegis AI — Network Intrusion Detection Platform
+      # 🛡️ Aegis AI — Network Intrusion Detection Platform
 
 <div align="center">
 
@@ -34,14 +34,15 @@ Send it a network connection. It tells you in milliseconds:
 
 ```bash
 # Health check — is the system alive?
-curl https://aegis-api.railway.app/api/health
+curl https://aegis-ai-api.onrender.com/api/health
 
 # Predict — is this network flow an attack?
-curl -X POST https://aegis-api.railway.app/api/predict \
+curl -X POST https://aegis-ai-api.onrender.com/api/predict \
   -H "Content-Type: application/json" \
   -d '{
     "duration": 0,
-    "protocolType": "tcp",
+    "protocolType": "tcp" ,
+    "service": "http",
     "flag": "SF",
     "srcBytes": 232,
     "dstBytes": 8153
@@ -296,7 +297,7 @@ POST /api/predict
 - [ ] Phase 5 — Attack Attribution (source IP, geolocation, threat actor mapping)
 - [ ] Phase 6 — LLM Agent (automated response recommendations)
 - [ ] Phase 7 — Real-time React Dashboard
-- [ ] Docker — full containerization
+-  [x] Docker — multi-stage build, deployed on Render
 
 ---
 
