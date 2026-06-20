@@ -1,26 +1,31 @@
-# 1. Ignore Massive Datasets & Logs
-csv_files/
-pcap_files/
-zeek_output/
-data/
-*.csv
-*.pcap
-*.log
+# macOS
+.DS_Store
 
-# 2. Ignore Phase 2 Machine Learning Models (They are too big for GitHub)
-models/
-*.pkl
-*.h5
-*.joblib
+# Java / Maven
+aegis-api/target/
+*.class
 
-# 3. Ignore Python & Mac Trash Files
+# Python
 __pycache__/
 *.pyc
-.DS_Store
-.ipynb_checkpoints/
-src/models/distilbert_threat/
-src/models/distilbert_threat/checkpoint-*/
+.venv/
+venv/
 
-# Exception: allow the small Aegis API model files needed for deployment
-!aegis-api/src/main/resources/models/
-!aegis-api/src/main/resources/models/*.pkl
+# Build artifacts
+*.zip
+
+# Data files (too big for git, keep local only)
+csv_files/
+csv_output/
+data/
+pcap_files/
+zeek_output/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Misc
+*.srt
+*.log

@@ -1,5 +1,0 @@
-com/aegis/api/AegisApplication.class
-com/aegis/api/model/PredictionResult.class
-com/aegis/api/controller/AegisController.class
-com/aegis/api/service/ThreatDetectionService.class
-com/aegis/api/model/NetworkFlow.class
