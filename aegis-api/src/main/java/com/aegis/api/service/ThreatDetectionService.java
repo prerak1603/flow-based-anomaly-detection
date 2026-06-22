@@ -114,15 +114,57 @@ public class ThreatDetectionService {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private String buildFeatureVector(NetworkFlow flow) {
+        // Helper to safely convert nullable numerics to string, defaulting to "0"
+        // Build all 41 NSL-KDD features in the exact order the trained model expects
         return String.join(",",
-                String.valueOf(flow.getDuration()),
-                flow.getProtocolType(),
-                flow.getService(),
-                flow.getFlag(),
-                String.valueOf(flow.getSrcBytes() != null ? flow.getSrcBytes() : 0),
-                String.valueOf(flow.getDstBytes() != null ? flow.getDstBytes() : 0)
+                d(flow.getDuration()),
+                s(flow.getProtocolType()),
+                s(flow.getService()),
+                s(flow.getFlag()),
+                d(flow.getSrcBytes()),
+                d(flow.getDstBytes()),
+                i(flow.getLand()),
+                d(flow.getWrongFragment()),
+                d(flow.getUrgent()),
+                d(flow.getHot()),
+                d(flow.getNumFailedLogins()),
+                i(flow.getLoggedIn()),
+                d(flow.getNumCompromised()),
+                i(flow.getRootShell()),
+                i(flow.getSuAttempted()),
+                d(flow.getNumRoot()),
+                d(flow.getNumFileCreations()),
+                d(flow.getNumShells()),
+                d(flow.getNumAccessFiles()),
+                d(flow.getNumOutboundCmds()),
+                i(flow.getIsHostLogin()),
+                i(flow.getIsGuestLogin()),
+                d(flow.getCount()),
+                d(flow.getSrvCount()),
+                d(flow.getSerrorRate()),
+                d(flow.getSrvSerrorRate()),
+                d(flow.getRerrorRate()),
+                d(flow.getSrvRerrorRate()),
+                d(flow.getSameSrvRate()),
+                d(flow.getDiffSrvRate()),
+                d(flow.getSrvDiffHostRate()),
+                d(flow.getDstHostCount()),
+                d(flow.getDstHostSrvCount()),
+                d(flow.getDstHostSameSrvRate()),
+                d(flow.getDstHostDiffSrvRate()),
+                d(flow.getDstHostSameSrcPortRate()),
+                d(flow.getDstHostSrvDiffHostRate()),
+                d(flow.getDstHostSerrorRate()),
+                d(flow.getDstHostSrvSerrorRate()),
+                d(flow.getDstHostRerrorRate()),
+                d(flow.getDstHostSrvRerrorRate())
         );
     }
+
+    // Null-safe formatters: Double, Integer, String → string with safe defaults
+    private String d(Double v) { return String.valueOf(v != null ? v : 0.0); }
+    private String i(Integer v) { return String.valueOf(v != null ? v : 0); }
+    private String s(String v) { return v != null ? v : ""; }
 
     private PredictionResult parsePythonOutput(String output) {
         // Python returns JSON: {"threat_class":"Normal","confidence":0.99,"probabilities":{"Normal":0.99,...},...}

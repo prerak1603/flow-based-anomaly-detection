@@ -57,12 +57,13 @@ def main():
         raw    = sys.argv[1].split(",")
         values = [safe_float(v) for v in raw]
 
-        if len(values) == 6:
+        # Expect all 41 features from Java. If fewer come in (legacy 6-field calls),
+        # pad with zeros — but emit a warning so we know the caller is sending bad data.
+        if len(values) != 41:
+            sys.stderr.write(f"WARN: Expected 41 features, got {len(values)}. Padding with zeros.\n")
             full = np.zeros(41, dtype=float)
-            full[0]=values[0]; full[1]=values[1]; full[3]=values[2]
-            full[4]=values[3]; full[5]=values[4]; full[22]=values[5]
-            full[23]=values[5]; full[28]=1.0; full[31]=255.0
-            full[32]=255.0; full[33]=1.0
+            for i, v in enumerate(values[:41]):
+                full[i] = v
             values = full.tolist()
 
         X        = pd.DataFrame([values], columns=FEATURE_NAMES)
