@@ -49,6 +49,6 @@ temp/
 *.zip
 *.srt
 aegis-api/target/
-aegis-v2-api/new_models/*.pkl
 new_results/*.parquet
 new_results/*.parquet
+!v2/api/new_models/aegis_v2_ensemble.pkl
