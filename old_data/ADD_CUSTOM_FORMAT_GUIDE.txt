@@ -1,0 +1,338 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║         HOW TO ADD YOUR CUSTOM LOG FORMAT - STEP BY STEP                 ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+
+SCENARIO: You have IoT device logs with these columns:
+══════════════════════════════════════════════════════
+
+Your CSV file: iot_devices.csv
+┌──────────────┬─────────────┬─────────────┬───────────┬─────────────┐
+│ device_time  │ device_ip   │ server_ip   │ bytes_up  │ bytes_down  │
+├──────────────┼─────────────┼─────────────┼───────────┼─────────────┤
+│ 09:00:00     │ 192.168.1.5 │ 52.1.2.3    │ 1024      │ 2048        │
+│ 09:00:05     │ 192.168.1.6 │ 52.1.2.3    │ 512       │ 1024        │
+└──────────────┴─────────────┴─────────────┴───────────┴─────────────┘
+
+
+PROBLEM: These column names are NOT in SCHEMA_ADAPTERS!
+═══════════════════════════════════════════════════════
+
+
+SOLUTION: Add a translation dictionary in 4 STEPS:
+═══════════════════════════════════════════════════
+
+
+STEP 1: Open Your Notebook in Colab
+────────────────────────────────────
+Find Cell 2 (the big cell with all the functions)
+
+
+STEP 2: Find SCHEMA_ADAPTERS
+─────────────────────────────
+Scroll down in Cell 2 until you see:
+
+    SCHEMA_ADAPTERS = {
+        "zeek": { ... },
+        "cicids": { ... },
+        "netflow": { ... },
+        "universal": None,
+    }
+
+
+STEP 3: Add Your Format Mapping
+────────────────────────────────
+Add your format BEFORE the "universal": None line:
+
+    SCHEMA_ADAPTERS = {
+        "zeek": { ... },
+        "cicids": { ... },
+        "netflow": { ... },
+        
+        # ← ADD THIS! ↓
+        "my_iot_devices": {
+            "device_time": "timestamp",      # Your column → Universal name
+            "device_ip":   "src_ip",
+            "server_ip":   "dst_ip",
+            "bytes_up":    "orig_bytes",
+            "bytes_down":  "dst_bytes",
+        },
+        # ← ADD THIS! ↑
+        
+        "universal": None,
+    }
+
+
+STEP 4: Add Detection Logic
+────────────────────────────
+In Cell 2, find the detect_schema() function:
+
+    def detect_schema(df):
+        cols = set(df.columns)
+        
+        if "id.orig_h" in cols:
+            return "zeek"
+        if "Source IP" in cols:
+            return "cicids"
+        if "sa" in cols:
+            return "netflow"
+        
+        # ← ADD THIS! ↓
+        if "device_time" in cols and "device_ip" in cols:
+            return "my_iot_devices"
+        # ← ADD THIS! ↑
+        
+        if "src_ip" in cols:
+            return "universal"
+
+
+STEP 5: Re-run Cell 2
+──────────────────────
+Click the play button on Cell 2 to reload the functions with your changes.
+
+
+STEP 6: Test It
+───────────────
+In a new cell, test the detection:
+
+    df = pd.read_csv("/content/iot_devices.csv")
+    schema = detect_schema(df)
+    print(f"Detected: {schema}")
+    
+    # Should print: "Detected: my_iot_devices"
+
+
+STEP 7: Run Full Pipeline
+──────────────────────────
+Now run Cell 5 (Extract Features):
+
+    windows = build_all_windows(df, schema="auto")
+    
+    # Or explicitly:
+    windows = build_all_windows(df, schema="my_iot_devices")
+
+
+DONE! Your custom format now works! ✓
+══════════════════════════════════════
+
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    VISUAL MAPPING EXPLANATION                             ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+Your columns          →  Universal names
+─────────────────────    ─────────────────
+device_time           →  timestamp
+device_ip             →  src_ip
+server_ip             →  dst_ip
+bytes_up              →  orig_bytes
+bytes_down            →  dst_bytes
+
+
+After normalization, your data looks like this:
+════════════════════════════════════════════════
+
+BEFORE (your format):
+┌──────────────┬─────────────┬─────────────┬───────────┬─────────────┐
+│ device_time  │ device_ip   │ server_ip   │ bytes_up  │ bytes_down  │
+├──────────────┼─────────────┼─────────────┼───────────┼─────────────┤
+│ 09:00:00     │ 192.168.1.5 │ 52.1.2.3    │ 1024      │ 2048        │
+└──────────────┴─────────────┴─────────────┴───────────┴─────────────┘
+
+AFTER (universal format):
+┌───────────┬─────────────┬──────────┬────────────┬───────────┐
+│ timestamp │ src_ip      │ dst_ip   │ orig_bytes │ dst_bytes │
+├───────────┼─────────────┼──────────┼────────────┼───────────┤
+│ 09:00:00  │ 192.168.1.5 │ 52.1.2.3 │ 1024       │ 2048      │
+└───────────┴─────────────┴──────────┴────────────┴───────────┘
+
+Now the rest of the code works the same way!
+
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    COMMON SCENARIOS                                       ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+SCENARIO 1: Columns already have standard names
+────────────────────────────────────────────────
+Your CSV has: timestamp, src_ip, dst_ip, ...
+
+→ Do nothing! It auto-detects as "universal" format
+
+
+SCENARIO 2: Some columns missing
+─────────────────────────────────
+Your CSV only has: time, source, destination, bytes
+
+→ Map what you have, leave rest blank:
+
+    "minimal_logs": {
+        "time":        "timestamp",
+        "source":      "src_ip",
+        "destination": "dst_ip",
+        "bytes":       "orig_bytes",
+        # Missing: ports, protocol, etc. - that's OK!
+    }
+
+
+SCENARIO 3: Weird column names
+───────────────────────────────
+Your CSV has: tm_stmp, src_addr, dst_addr
+
+→ Just map them:
+
+    "weird_format": {
+        "tm_stmp":   "timestamp",
+        "src_addr":  "src_ip",
+        "dst_addr":  "dst_ip",
+    }
+
+
+SCENARIO 4: Multiple similar formats
+─────────────────────────────────────
+You have logs from 3 different IoT vendors
+
+→ Create separate mappings:
+
+    "vendor_a_iot": { ... },
+    "vendor_b_iot": { ... },
+    "vendor_c_iot": { ... },
+
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    TESTING YOUR MAPPING                                   ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+After adding your format, test each step:
+══════════════════════════════════════════
+
+TEST 1: Detection
+─────────────────
+df = pd.read_csv("your_file.csv")
+schema = detect_schema(df)
+print(f"Detected: {schema}")
+
+✓ Should print YOUR format name, not error
+
+
+TEST 2: Normalization
+─────────────────────
+df_normalized = normalize_schema(df, schema="your_format")
+print(df_normalized.columns)
+
+✓ Should show: ['timestamp', 'src_ip', 'dst_ip', ...]
+
+
+TEST 3: Full pipeline
+─────────────────────
+windows = build_all_windows(df, schema="your_format")
+print(f"Created {len(windows['1min'])} windows")
+
+✓ Should create windows without errors
+
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    UNIVERSAL COLUMN NAMES REFERENCE                       ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+Map YOUR columns to THESE standard names:
+══════════════════════════════════════════
+
+REQUIRED (at minimum, have these):
+─────────────────────────────────
+timestamp    ← When the connection happened
+src_ip       ← Source IP address (who initiated)
+dst_ip       ← Destination IP address (who received)
+
+
+HIGHLY RECOMMENDED:
+───────────────────
+src_port     ← Source port number
+dst_port     ← Destination port number
+protocol     ← Protocol (TCP, UDP, ICMP, etc.)
+orig_bytes   ← Bytes sent from source
+dst_bytes    ← Bytes sent from destination
+
+
+OPTIONAL (bonus features):
+──────────────────────────
+duration     ← Connection duration in seconds
+conn_state   ← Connection state (OK, REJECT, etc.)
+
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    QUICK REFERENCE TABLE                                  ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+Common variations you might see:
+════════════════════════════════
+
+YOUR COLUMN            →  MAP TO
+─────────────────────     ─────────
+time, ts, timestamp    →  timestamp
+src, source, orig_ip   →  src_ip
+dst, dest, resp_ip     →  dst_ip
+sport, src_p           →  src_port
+dport, dst_p           →  dst_port
+proto, protocol_type   →  protocol
+bytes_sent, tx_bytes   →  orig_bytes
+bytes_recv, rx_bytes   →  dst_bytes
+dur, conn_time         →  duration
+state, status, action  →  conn_state
+
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    TROUBLESHOOTING                                        ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+ERROR: "Unknown schema"
+───────────────────────
+→ Your detection logic not added or incorrect
+→ Check column names match exactly (case-sensitive!)
+
+
+ERROR: KeyError or missing column
+──────────────────────────────────
+→ Your mapping has wrong column names
+→ Print df.columns to see exact names
+→ Match them exactly (including spaces, case)
+
+
+NO FEATURES EXTRACTED:
+──────────────────────
+→ Missing required columns (timestamp, src_ip, dst_ip)
+→ Check they mapped correctly
+→ Print df_normalized.columns after normalization
+
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    COMPLETE COPY-PASTE TEMPLATE                           ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+# In Cell 2, add this to SCHEMA_ADAPTERS:
+
+"YOUR_FORMAT_NAME": {
+    "your_time_column":     "timestamp",
+    "your_source_column":   "src_ip",
+    "your_dest_column":     "dst_ip",
+    "your_sport_column":    "src_port",      # Optional
+    "your_dport_column":    "dst_port",      # Optional
+    "your_protocol_column": "protocol",      # Optional
+    "your_bytes_up_column": "orig_bytes",    # Optional
+    "your_bytes_dn_column": "dst_bytes",     # Optional
+    "your_duration_column": "duration",      # Optional
+    "your_state_column":    "conn_state",    # Optional
+},
+
+
+# In Cell 2, add this to detect_schema() function:
+
+if "your_unique_column" in cols and "another_unique_column" in cols:
+    return "YOUR_FORMAT_NAME"
+
+
+# Then use:
+windows = build_all_windows(df, schema="YOUR_FORMAT_NAME")
+
+
+THAT'S IT! 🎉

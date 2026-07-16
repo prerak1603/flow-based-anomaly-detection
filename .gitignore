@@ -1,31 +1,54 @@
-# macOS
-.DS_Store
-
-# Java / Maven
-aegis-api/target/
-*.class
-
-# Python
-__pycache__/
-*.pyc
-.venv/
-venv/
-
-# Build artifacts
-*.zip
-
-# Data files (too big for git, keep local only)
+# 1. Ignore Massive Datasets & Logs
 csv_files/
-csv_output/
-data/
 pcap_files/
 zeek_output/
+data/
+*.csv
+*.pcap
+*.log
+
+# 2. Ignore Phase 2 Machine Learning Models (They are too big for GitHub)
+models/
+*.pkl
+*.h5
+*.joblib
+
+# 3. Ignore Python & Mac Trash Files
+__pycache__/
+*.pyc
+.DS_Store
+.ipynb_checkpoints/
+*.ipynb
 
 # IDE
-.idea/
 .vscode/
-*.iml
+.idea/
+*.swp
+*.swo
+*~
 
-# Misc
-*.srt
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Logs
 *.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Keep these folders but ignore contents
+!models/.gitkeep
+!csv_files/.gitkeep
+!csv_output/.gitkeep
+!results/.gitkeep
+*.zip
+*.srt
+aegis-api/target/
+aegis-v2-api/new_models/*.pkl
+new_results/*.parquet
+new_results/*.parquet

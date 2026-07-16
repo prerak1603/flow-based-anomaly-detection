@@ -1,0 +1,39 @@
+================================================================================
+AEGIS AI v2 - SAMPLING REPORT
+================================================================================
+
+Generated       : 2026-07-07T19:52:10.411982
+Pipeline stage  : Day 1 - Hour 5 (Sampling)
+
+--------------------------------------------------------------------------------
+SAMPLING STRATEGY
+--------------------------------------------------------------------------------
+Samples per class  : 50,000
+Test size          : 20%
+Random state       : 42
+
+--------------------------------------------------------------------------------
+CLASS BALANCING RESULTS
+--------------------------------------------------------------------------------
+Attack Type                                  Before      After          Action
+----------------------------------------------------------------------------
+BENIGN                                    2,096,484     50,000         sampled
+DoS Hulk                                    172,849     50,000         sampled
+DDoS                                        128,016     50,000         sampled
+PortScan                                     90,819     50,000         sampled
+DoS GoldenEye                                10,286     10,286        kept all
+FTP-Patator                                   5,933      5,933        kept all
+DoS slowloris                                 5,385      5,385        kept all
+DoS Slowhttptest                              5,228      5,228        kept all
+SSH-Patator                                   3,219      3,219        kept all
+Web Attack                                    2,143      2,143        kept all
+Bot                                           1,953      1,953        kept all
+Infiltration                                     36         36        kept all
+Heartbleed                                       11         11        kept all
+
+--------------------------------------------------------------------------------
+FINAL SPLIT
+--------------------------------------------------------------------------------
+Training set   : 187,355 records
+Testing set    : 46,839 records
+Total          : 234,194 records

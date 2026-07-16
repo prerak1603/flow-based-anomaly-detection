@@ -1,0 +1,126 @@
+================================================================================
+AEGIS AI v2 - EXPLORATION REPORT
+================================================================================
+
+Generated       : 2026-07-05T15:40:08.434854
+Dataset         : CIC-IDS-2017
+Purpose         : Data profiling for v2 model training
+
+--------------------------------------------------------------------------------
+DATASET OVERVIEW
+--------------------------------------------------------------------------------
+Total records   : 2,830,743
+Total features  : 80
+Attack types    : 15
+Memory size     : 2.07 GB
+
+--------------------------------------------------------------------------------
+DATA QUALITY METRICS
+--------------------------------------------------------------------------------
+Columns with nulls    : 1
+Infinity values       : 4,376
+Columns with infinity : 2
+Duplicate rows        : 256,479 (9.06%)
+
+--------------------------------------------------------------------------------
+LABEL DISTRIBUTION
+--------------------------------------------------------------------------------
+BENIGN                                           2,273,097   80.30%
+DoS Hulk                                           231,073    8.16%
+PortScan                                           158,930    5.61%
+DDoS                                               128,027    4.52%
+DoS GoldenEye                                       10,293    0.36%
+FTP-Patator                                          7,938    0.28%
+SSH-Patator                                          5,897    0.21%
+DoS slowloris                                        5,796    0.20%
+DoS Slowhttptest                                     5,499    0.19%
+Bot                                                  1,966    0.07%
+Web Attack � Brute Force                             1,507    0.05%
+Web Attack � XSS                                       652    0.02%
+Infiltration                                            36    0.00%
+Web Attack � Sql Injection                              21    0.00%
+Heartbleed                                              11    0.00%
+
+--------------------------------------------------------------------------------
+FEATURE COLUMNS
+--------------------------------------------------------------------------------
+  [  1] Destination Port
+  [  2] Flow Duration
+  [  3] Total Fwd Packets
+  [  4] Total Backward Packets
+  [  5] Total Length of Fwd Packets
+  [  6] Total Length of Bwd Packets
+  [  7] Fwd Packet Length Max
+  [  8] Fwd Packet Length Min
+  [  9] Fwd Packet Length Mean
+  [ 10] Fwd Packet Length Std
+  [ 11] Bwd Packet Length Max
+  [ 12] Bwd Packet Length Min
+  [ 13] Bwd Packet Length Mean
+  [ 14] Bwd Packet Length Std
+  [ 15] Flow Bytes/s
+  [ 16] Flow Packets/s
+  [ 17] Flow IAT Mean
+  [ 18] Flow IAT Std
+  [ 19] Flow IAT Max
+  [ 20] Flow IAT Min
+  [ 21] Fwd IAT Total
+  [ 22] Fwd IAT Mean
+  [ 23] Fwd IAT Std
+  [ 24] Fwd IAT Max
+  [ 25] Fwd IAT Min
+  [ 26] Bwd IAT Total
+  [ 27] Bwd IAT Mean
+  [ 28] Bwd IAT Std
+  [ 29] Bwd IAT Max
+  [ 30] Bwd IAT Min
+  [ 31] Fwd PSH Flags
+  [ 32] Bwd PSH Flags
+  [ 33] Fwd URG Flags
+  [ 34] Bwd URG Flags
+  [ 35] Fwd Header Length
+  [ 36] Bwd Header Length
+  [ 37] Fwd Packets/s
+  [ 38] Bwd Packets/s
+  [ 39] Min Packet Length
+  [ 40] Max Packet Length
+  [ 41] Packet Length Mean
+  [ 42] Packet Length Std
+  [ 43] Packet Length Variance
+  [ 44] FIN Flag Count
+  [ 45] SYN Flag Count
+  [ 46] RST Flag Count
+  [ 47] PSH Flag Count
+  [ 48] ACK Flag Count
+  [ 49] URG Flag Count
+  [ 50] CWE Flag Count
+  [ 51] ECE Flag Count
+  [ 52] Down/Up Ratio
+  [ 53] Average Packet Size
+  [ 54] Avg Fwd Segment Size
+  [ 55] Avg Bwd Segment Size
+  [ 56] Fwd Header Length.1
+  [ 57] Fwd Avg Bytes/Bulk
+  [ 58] Fwd Avg Packets/Bulk
+  [ 59] Fwd Avg Bulk Rate
+  [ 60] Bwd Avg Bytes/Bulk
+  [ 61] Bwd Avg Packets/Bulk
+  [ 62] Bwd Avg Bulk Rate
+  [ 63] Subflow Fwd Packets
+  [ 64] Subflow Fwd Bytes
+  [ 65] Subflow Bwd Packets
+  [ 66] Subflow Bwd Bytes
+  [ 67] Init_Win_bytes_forward
+  [ 68] Init_Win_bytes_backward
+  [ 69] act_data_pkt_fwd
+  [ 70] min_seg_size_forward
+  [ 71] Active Mean
+  [ 72] Active Std
+  [ 73] Active Max
+  [ 74] Active Min
+  [ 75] Idle Mean
+  [ 76] Idle Std
+  [ 77] Idle Max
+  [ 78] Idle Min
+  [ 79] Label
+  [ 80] __source_file

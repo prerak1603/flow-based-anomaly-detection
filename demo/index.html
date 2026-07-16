@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis AI — Live Network Threat Detection</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: 'Inter', -apple-system, sans-serif; }
+  .glow { box-shadow: 0 0 40px rgba(99, 102, 241, 0.15); }
+</style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+
+<div class="max-w-5xl mx-auto px-6 py-12">
+
+  <div class="text-center mb-12">
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs mb-4">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      LIVE · Connected to aegis-ai-api.onrender.com
+    </div>
+    <h1 class="text-5xl font-bold mb-3 bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+      Aegis AI
+    </h1>
+    <p class="text-slate-400 text-lg">Real-time network intrusion detection · 96% accuracy · 5 attack classes</p>
+  </div>
+
+  <div class="mb-6">
+    <p class="text-sm text-slate-400 mb-3">Try a real NSL-KDD attack pattern:</p>
+    <div class="flex gap-3 flex-wrap">
+      <button onclick="loadPreset('normal')" class="px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition">
+        ✓ Normal Traffic
+      </button>
+      <button onclick="loadPreset('dos')" class="px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition">
+        ⚠ DoS (SYN Flood)
+      </button>
+      <button onclick="loadPreset('probe')" class="px-4 py-2 rounded-lg bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500/20 transition">
+        🔍 Probe (Port Scan)
+      </button>
+      <button onclick="loadPreset('r2l')" class="px-4 py-2 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-400 hover:bg-purple-500/20 transition">
+        🔓 R2L (Brute Force)
+      </button>
+      <button onclick="loadPreset('u2r')" class="px-4 py-2 rounded-lg bg-pink-500/10 border border-pink-500/30 text-pink-400 hover:bg-pink-500/20 transition">
+        💥 U2R (Buffer Overflow)
+      </button>
+    </div>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-6">
+
+    <div class="bg-slate-900 rounded-2xl p-6 border border-slate-800 glow">
+      <h2 class="text-xl font-semibold mb-5">Network Flow Input</h2>
+      <p class="text-xs text-slate-500 mb-4">Click a preset above, or describe the flow in plain terms. The full 41-feature NSL-KDD vector is sent to the model.</p>
+
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Protocol</label>
+            <select id="protocolType" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-indigo-500 focus:outline-none">
+              <option>tcp</option><option>udp</option><option>icmp</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Service</label>
+            <select id="service" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-indigo-500 focus:outline-none">
+              <option>http</option><option>ftp</option><option>ftp_data</option><option>smtp</option>
+              <option>ssh</option><option>telnet</option><option>private</option><option>other</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm text-slate-400 mb-1">Flag</label>
+          <select id="flag" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-indigo-500 focus:outline-none">
+            <option>SF</option><option>S0</option><option>REJ</option><option>RSTR</option><option>RSTO</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Src Bytes</label>
+            <input type="number" id="srcBytes" value="491" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-indigo-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Dst Bytes</label>
+            <input type="number" id="dstBytes" value="0" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-indigo-500 focus:outline-none">
+          </div>
+        </div>
+
+        <button onclick="analyze()" id="analyzeBtn" class="w-full py-3 mt-4 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 font-semibold transition">
+          Analyze Flow →
+        </button>
+      </div>
+    </div>
+
+    <div class="bg-slate-900 rounded-2xl p-6 border border-slate-800 glow">
+      <h2 class="text-xl font-semibold mb-5">Detection Result</h2>
+      <div id="result" class="text-slate-500 text-center py-12">
+        Click a preset, then "Analyze Flow"
+      </div>
+    </div>
+
+  </div>
+
+  <p class="text-center text-slate-500 text-sm mt-8">
+    Built by Prerak Nain · <a href="https://github.com/prerak1603/flow-based-anomaly-detection" class="text-indigo-400 hover:underline">View source on GitHub</a>
+  </p>
+
+</div>
+
+<script>
+const API_URL = 'https://aegis-ai-api.onrender.com/api/predict';
+
+// Real NSL-KDD attack rows — verified labeled samples from KDDTrain+.txt
+// Each preset is the FULL 41-feature vector the model was trained on
+const PRESETS = {
+  normal: {
+    surface: { protocolType: 'tcp', service: 'ftp_data', flag: 'SF', srcBytes: 491, dstBytes: 0 },
+    full: { duration:0,protocolType:"tcp",service:"ftp_data",flag:"SF",srcBytes:491,dstBytes:0,land:0,wrongFragment:0,urgent:0,hot:0,numFailedLogins:0,loggedIn:0,numCompromised:0,rootShell:0,suAttempted:0,numRoot:0,numFileCreations:0,numShells:0,numAccessFiles:0,numOutboundCmds:0,isHostLogin:0,isGuestLogin:0,count:2,srvCount:2,serrorRate:0.00,srvSerrorRate:0.00,rerrorRate:0.00,srvRerrorRate:0.00,sameSrvRate:1.00,diffSrvRate:0.00,srvDiffHostRate:0.00,dstHostCount:150,dstHostSrvCount:25,dstHostSameSrvRate:0.17,dstHostDiffSrvRate:0.03,dstHostSameSrcPortRate:0.17,dstHostSrvDiffHostRate:0.00,dstHostSerrorRate:0.00,dstHostSrvSerrorRate:0.00,dstHostRerrorRate:0.05,dstHostSrvRerrorRate:0.00 }
+  },
+  dos: {
+    surface: { protocolType: 'tcp', service: 'private', flag: 'S0', srcBytes: 0, dstBytes: 0 },
+    full: { duration:0,protocolType:"tcp",service:"private",flag:"S0",srcBytes:0,dstBytes:0,land:0,wrongFragment:0,urgent:0,hot:0,numFailedLogins:0,loggedIn:0,numCompromised:0,rootShell:0,suAttempted:0,numRoot:0,numFileCreations:0,numShells:0,numAccessFiles:0,numOutboundCmds:0,isHostLogin:0,isGuestLogin:0,count:123,srvCount:6,serrorRate:1.00,srvSerrorRate:1.00,rerrorRate:0.00,srvRerrorRate:0.00,sameSrvRate:0.05,diffSrvRate:0.07,srvDiffHostRate:0.00,dstHostCount:255,dstHostSrvCount:26,dstHostSameSrvRate:0.10,dstHostDiffSrvRate:0.05,dstHostSameSrcPortRate:0.00,dstHostSrvDiffHostRate:0.00,dstHostSerrorRate:1.00,dstHostSrvSerrorRate:1.00,dstHostRerrorRate:0.00,dstHostSrvRerrorRate:0.00 }
+  },
+  probe: {
+    surface: { protocolType: 'tcp', service: 'private', flag: 'REJ', srcBytes: 0, dstBytes: 0 },
+    full: { duration:0,protocolType:"tcp",service:"private",flag:"REJ",srcBytes:0,dstBytes:0,land:0,wrongFragment:0,urgent:0,hot:0,numFailedLogins:0,loggedIn:0,numCompromised:0,rootShell:0,suAttempted:0,numRoot:0,numFileCreations:0,numShells:0,numAccessFiles:0,numOutboundCmds:0,isHostLogin:0,isGuestLogin:0,count:2,srvCount:1,serrorRate:0.00,srvSerrorRate:0.00,rerrorRate:1.00,srvRerrorRate:1.00,sameSrvRate:0.50,diffSrvRate:1.00,srvDiffHostRate:0.00,dstHostCount:255,dstHostSrvCount:1,dstHostSameSrvRate:0.00,dstHostDiffSrvRate:0.31,dstHostSameSrcPortRate:0.28,dstHostSrvDiffHostRate:0.00,dstHostSerrorRate:0.00,dstHostSrvSerrorRate:0.00,dstHostRerrorRate:0.29,dstHostSrvRerrorRate:1.00 }
+  },
+  r2l: {
+    surface: { protocolType: 'tcp', service: 'telnet', flag: 'RSTO', srcBytes: 125, dstBytes: 179 },
+    full: { duration:0,protocolType:"tcp",service:"telnet",flag:"RSTO",srcBytes:125,dstBytes:179,land:0,wrongFragment:0,urgent:0,hot:1,numFailedLogins:1,loggedIn:0,numCompromised:0,rootShell:0,suAttempted:0,numRoot:0,numFileCreations:0,numShells:0,numAccessFiles:0,numOutboundCmds:0,isHostLogin:0,isGuestLogin:0,count:1,srvCount:1,serrorRate:0.00,srvSerrorRate:0.00,rerrorRate:1.00,srvRerrorRate:1.00,sameSrvRate:1.00,diffSrvRate:0.00,srvDiffHostRate:0.00,dstHostCount:4,dstHostSrvCount:4,dstHostSameSrvRate:1.00,dstHostDiffSrvRate:0.00,dstHostSameSrcPortRate:0.25,dstHostSrvDiffHostRate:0.00,dstHostSerrorRate:0.25,dstHostSrvSerrorRate:0.25,dstHostRerrorRate:0.75,dstHostSrvRerrorRate:0.75 }
+  },
+  u2r: {
+    surface: { protocolType: 'tcp', service: 'ftp_data', flag: 'SF', srcBytes: 0, dstBytes: 5696 },
+    full: { duration:0,protocolType:"tcp",service:"ftp_data",flag:"SF",srcBytes:0,dstBytes:5696,land:0,wrongFragment:0,urgent:0,hot:0,numFailedLogins:0,loggedIn:1,numCompromised:0,rootShell:0,suAttempted:0,numRoot:0,numFileCreations:0,numShells:0,numAccessFiles:0,numOutboundCmds:0,isHostLogin:0,isGuestLogin:0,count:1,srvCount:1,serrorRate:0.00,srvSerrorRate:0.00,rerrorRate:0.00,srvRerrorRate:0.00,sameSrvRate:1.00,diffSrvRate:0.00,srvDiffHostRate:0.00,dstHostCount:1,dstHostSrvCount:81,dstHostSameSrvRate:1.00,dstHostDiffSrvRate:0.00,dstHostSameSrcPortRate:1.00,dstHostSrvDiffHostRate:0.02,dstHostSerrorRate:0.00,dstHostSrvSerrorRate:0.00,dstHostRerrorRate:0.00,dstHostSrvRerrorRate:0.00 }
+  }
+};
+
+let currentPreset = null;
+
+function loadPreset(type) {
+  currentPreset = type;
+  const p = PRESETS[type].surface;
+  document.getElementById('protocolType').value = p.protocolType;
+  document.getElementById('service').value = p.service;
+  document.getElementById('flag').value = p.flag;
+  document.getElementById('srcBytes').value = p.srcBytes;
+  document.getElementById('dstBytes').value = p.dstBytes;
+}
+
+async function analyze() {
+  const btn = document.getElementById('analyzeBtn');
+  const result = document.getElementById('result');
+  btn.disabled = true;
+  btn.textContent = 'Analyzing...';
+  result.innerHTML = '<div class="text-center py-12 text-slate-400">⏳ Calling Aegis AI...</div>';
+
+  // If a preset is loaded, send its FULL 41-feature vector (with any user tweaks to visible fields)
+  // Otherwise build a default 41-feature vector from the form (with 0s for hidden fields)
+  let payload;
+  if (currentPreset && PRESETS[currentPreset]) {
+    payload = { ...PRESETS[currentPreset].full };
+    // Override with current form values (in case user edited them)
+    payload.protocolType = document.getElementById('protocolType').value;
+    payload.service = document.getElementById('service').value;
+    payload.flag = document.getElementById('flag').value;
+    payload.srcBytes = Number(document.getElementById('srcBytes').value);
+    payload.dstBytes = Number(document.getElementById('dstBytes').value);
+  } else {
+    payload = {
+      duration: 0,
+      protocolType: document.getElementById('protocolType').value,
+      service: document.getElementById('service').value,
+      flag: document.getElementById('flag').value,
+      srcBytes: Number(document.getElementById('srcBytes').value),
+      dstBytes: Number(document.getElementById('dstBytes').value)
+    };
+  }
+
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    renderResult(data);
+  } catch (e) {
+    result.innerHTML = `<div class="text-red-400 text-center py-12">Error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Analyze Flow →';
+  }
+}
+
+function renderResult(data) {
+  const cls = (data.threatClass || data.threat_class || 'unknown').toString();
+  const conf = ((data.confidence || 0) * 100).toFixed(2);
+  const sev = data.severity || 'UNKNOWN';
+  const isThreat = cls.toLowerCase() !== 'normal';
+
+  const sevColor = {
+    'NONE': 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
+    'LOW': 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10',
+    'MEDIUM': 'text-orange-400 border-orange-500/30 bg-orange-500/10',
+    'HIGH': 'text-red-400 border-red-500/30 bg-red-500/10',
+    'CRITICAL': 'text-red-500 border-red-500/50 bg-red-500/20'
+  }[sev] || 'text-slate-400 border-slate-700 bg-slate-800';
+
+  const probs = data.classProbabilities || data.probabilities || {};
+  const probBars = Object.entries(probs).map(([k, v]) => {
+    const pct = (v * 100).toFixed(2);
+    return `
+      <div class="mb-2">
+        <div class="flex justify-between text-xs mb-1">
+          <span class="text-slate-300">${k.toUpperCase()}</span>
+          <span class="text-slate-500">${pct}%</span>
+        </div>
+        <div class="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+          <div class="h-full bg-indigo-500 rounded-full transition-all" style="width: ${pct}%"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('result').innerHTML = `
+    <div class="text-center mb-5">
+      <div class="text-5xl mb-2">${isThreat ? '⚠️' : '✓'}</div>
+      <div class="text-3xl font-bold ${isThreat ? 'text-red-400' : 'text-emerald-400'}">${cls.toUpperCase()}</div>
+      <div class="text-slate-400 mt-1">${conf}% confidence</div>
+    </div>
+    <div class="inline-block px-3 py-1 rounded-full border ${sevColor} text-sm font-medium mb-5">
+      Severity: ${sev}
+    </div>
+    <div class="text-xs text-slate-500 mb-3">Class probabilities:</div>
+    ${probBars}
+    <div class="text-xs text-slate-500 mt-4 italic">${data.message || ''}</div>
+  `;
+}
+</script>
+
+</body>
+</html>

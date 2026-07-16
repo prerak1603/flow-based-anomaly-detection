@@ -1,0 +1,17 @@
+{
+  "window_count": 835929,
+  "normal_windows": 453267,
+  "attack_windows": 382662,
+  "predicted_attack_windows": 583908,
+  "confusion_matrix": {
+    "tn": 245776,
+    "fp": 207491,
+    "fn": 6245,
+    "tp": 376417
+  },
+  "precision_attack": 0.6446512121772608,
+  "recall_attack": 0.983680114565857,
+  "f1_attack": 0.7788716802714755,
+  "accuracy": 0.7443132132035137,
+  "roc_auc_score": 0.7804366659494343
+}
