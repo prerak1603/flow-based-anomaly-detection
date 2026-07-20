@@ -52,3 +52,9 @@ aegis-api/target/
 new_results/*.parquet
 new_results/*.parquet
 !v2/api/new_models/aegis_v2_ensemble.pkl
+
+# v2 augmentation/tuning artifacts (large files)
+v2/results/*.parquet
+v2/models_augmented/*.pkl
+v2/models_tuned/*.pkl
+v2/models_calibrated/*.pkl
