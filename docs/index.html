@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aegis AI — Network Security Audit Platform</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background:#050308;
+    overflow:hidden;
+  }
+  #scene {
+    --c1:#140a1f; --c2:#050308;
+    width:100vw; height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(circle at 50% 45%, var(--c1) 0%, var(--c2) 100%);
+    position:relative; overflow:hidden;
+  }
+  #grid {
+    position:absolute; inset:0;
+    background-image:linear-gradient(rgba(56,182,255,0.05) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(56,182,255,0.05) 1px, transparent 1px);
+    background-size:28px 28px; opacity:0;
+  }
+  #flash-r, #flash-b, #flash {
+    position:absolute; inset:0; opacity:0;
+  }
+  #flash-r { background:#ff2b4d; mix-blend-mode:screen; }
+  #flash-b { background:#2bb0ff; mix-blend-mode:screen; }
+  #flash   { background:#fff; }
+  #attack-field { position:absolute; width:100%; height:100%; }
+  #shard-field { position:absolute; width:200px; height:200px; opacity:0; }
+  #glow {
+    position:absolute; width:340px; height:340px; border-radius:50%;
+    background:radial-gradient(circle, rgba(56,182,255,0.45) 0%, transparent 70%); opacity:0;
+  }
+  #ring {
+    position:absolute; width:20px; height:20px; border-radius:50%;
+    border:2px solid rgba(56,182,255,0.9); opacity:0;
+  }
+  #stage { text-align:center; position:relative; z-index:3; }
+  #letters { font-size:clamp(32px,6vw,54px); font-weight:500; letter-spacing:6px; color:#f4f0ff; }
+  #underline {
+    width:0; height:1px; margin:10px auto 0;
+    background:linear-gradient(90deg,transparent,#38b6ff,transparent);
+  }
+  #tagline { opacity:0; margin-top:14px; font-size:14px; color:#7fc4ff; letter-spacing:3px; }
+  #cta {
+    opacity:0; margin-top:30px; background:transparent;
+    border:1px solid rgba(56,182,255,0.6); color:#f4f0ff;
+    padding:12px 28px; border-radius:8px; font-size:14px;
+    letter-spacing:1px; cursor:pointer; text-decoration:none; display:inline-block;
+    transition:background .2s, transform .2s;
+  }
+  #cta:hover { background:rgba(56,182,255,0.12); transform:translateY(-1px); }
+  #skip {
+    position:absolute; bottom:20px; right:24px; z-index:10;
+    color:#5a7a99; font-size:11px; letter-spacing:1px; cursor:pointer;
+    opacity:0.7; background:none; border:none; font-family:inherit;
+  }
+  #skip:hover { opacity:1; }
+</style>
+</head>
+<body>
+
+<div id="scene">
+  <div id="grid"></div>
+  <div id="flash-r"></div>
+  <div id="flash-b"></div>
+  <div id="flash"></div>
+  <div id="attack-field"></div>
+
+  <svg id="shield-svg" width="120" height="130" viewBox="0 0 120 130" style="position:absolute; opacity:0;">
+    <path id="shield-path" d="M60 6 L108 24 L108 62 Q108 100 60 124 Q12 100 12 62 L12 24 Z" fill="rgba(56,182,255,0.12)" stroke="#38b6ff" stroke-width="2"/>
+    <g id="cracks" stroke="#eaf6ff" stroke-width="1" opacity="0">
+      <path d="M60 6 L52 50 L70 60 L45 90 L60 124" fill="none"/>
+      <path d="M12 24 L52 50 M108 24 L70 60 M12 62 L45 90" fill="none"/>
+    </g>
+  </svg>
+
+  <div id="shard-field"></div>
+  <div id="glow"></div>
+  <div id="ring"></div>
+
+  <div id="stage">
+    <div style="height:150px;"></div>
+    <div id="letters"></div>
+    <div id="underline"></div>
+    <div id="tagline">NETWORK SECURITY, AUTOMATED</div>
+    <a id="cta" href="#">LAUNCH AUDIT TOOL →</a>
+  </div>
+
+  <button id="skip">SKIP INTRO →</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+// ============================================================
+// CONFIG — set your live Streamlit dashboard URL here
+// ============================================================
+const DASHBOARD_URL = "https://flow-based-anomaly-detection-hqnj5ccn9xcz4ojug47sen.streamlit.app";
+
+document.getElementById('cta').href = DASHBOARD_URL;
+
+// ============================================================
+// SCENE SETUP
+// ============================================================
+const attackField = document.getElementById('attack-field');
+const W = window.innerWidth, H = window.innerHeight;
+const attackers = [];
+const M = 10;
+for (let i = 0; i < M; i++) {
+  const s = document.createElement('div');
+  const edge = Math.floor(Math.random()*4);
+  let sx, sy;
+  if (edge===0){sx=Math.random()*W; sy=-20;}
+  else if (edge===1){sx=W+20; sy=Math.random()*H;}
+  else if (edge===2){sx=Math.random()*W; sy=H+20;}
+  else {sx=-20; sy=Math.random()*H;}
+  s.style.position='absolute'; s.style.left=sx+'px'; s.style.top=sy+'px';
+  s.style.width='5px'; s.style.height='5px'; s.style.borderRadius='50%';
+  s.style.background='#ff3b3b'; s.style.boxShadow='0 0 10px #ff3b3b, 0 0 2px #fff';
+  attackField.appendChild(s);
+  attackers.push({el:s});
+}
+
+const shardField = document.getElementById('shard-field');
+const shardShapes = [
+  'polygon(50% 0%, 100% 30%, 65% 60%, 50% 100%, 35% 55%)',
+  'polygon(0% 0%, 100% 20%, 60% 100%, 20% 70%)',
+  'polygon(50% 0%, 100% 100%, 0% 100%)',
+  'polygon(20% 0%, 100% 40%, 70% 100%, 0% 60%)'
+];
+const shards = [];
+for (let i=0; i<7; i++) {
+  const s = document.createElement('div');
+  const angle = (i/7)*Math.PI*2 + Math.random()*0.4;
+  const dist = 55 + Math.random()*40;
+  s.style.position='absolute'; s.style.left='50%'; s.style.top='50%';
+  s.style.width='26px'; s.style.height='26px';
+  s.style.background='linear-gradient(135deg,#7fd4ff,#38b6ff)';
+  s.style.clipPath=shardShapes[i%shardShapes.length];
+  s.style.boxShadow='0 0 10px rgba(56,182,255,0.7)';
+  s.style.transform='translate(-50%,-50%)'; s.style.opacity='0';
+  shardField.appendChild(s);
+  shards.push({el:s, angle, dist});
+}
+shardField.style.left='calc(50% - 100px)';
+shardField.style.top='calc(50% - 90px)';
+
+const word = "AEGIS AI";
+const el = document.getElementById('letters');
+word.split('').forEach(ch => {
+  const span = document.createElement('span');
+  span.textContent = ch===' ' ? '\u00A0\u00A0' : ch;
+  span.style.display='inline-block'; span.style.opacity='0';
+  span.style.transform='translateY(20px) scale(0.5)';
+  el.appendChild(span);
+});
+
+// ============================================================
+// TIMELINE — sped up ~40% from previous version
+// ============================================================
+const scene = document.getElementById('scene');
+const tl = gsap.timeline();
+
+tl.to('#grid', {opacity:1, duration:0.25}, 0);
+tl.to('#shield-svg', {opacity:1, duration:0.2}, 0.05);
+tl.fromTo('#shield-svg', {scale:0.8}, {scale:1, duration:0.25, ease:'back.out(2)'}, 0.05);
+
+tl.to(scene, {'--c1':'#2a0a12','--c2':'#0a0305', duration:0.55, ease:'power1.in'}, 0.1);
+
+attackers.forEach((a,i) => {
+  tl.to(a.el, {left:W/2, top:H/2-15, duration:0.45, ease:'power2.in'}, 0.12 + i*0.018);
+});
+
+tl.to('#cracks', {opacity:1, duration:0.06}, '+=0.03');
+tl.to('#flash-r', {opacity:0.85, x:-10, duration:0.04}, '<')
+  .to('#flash-b', {opacity:0.85, x:10, duration:0.04}, '<')
+  .to('#flash', {opacity:1, duration:0.04}, '<')
+  .to(['#flash-r','#flash-b'], {opacity:0, x:0, duration:0.15}, '+=0.02')
+  .to('#flash', {opacity:0, duration:0.15}, '<');
+tl.to(attackers.map(a=>a.el), {opacity:0, scale:0.3, duration:0.18}, '<');
+tl.fromTo('#stage', {x:0}, {x:6, duration:0.03, repeat:5, yoyo:true, ease:'none'}, '<');
+
+tl.to('#shield-svg', {opacity:0, scale:1.1, duration:0.1}, '+=0.02');
+tl.to('#shard-field', {opacity:1, duration:0.01}, '<');
+shards.forEach((s,i) => {
+  tl.to(s.el, {x:Math.cos(s.angle)*s.dist, y:Math.sin(s.angle)*s.dist, opacity:1,
+    rotate:(Math.random()-0.5)*260, scale:1, duration:0.22, ease:'power3.out'}, '<+'+(i*0.01));
+});
+
+tl.to(scene, {'--c1':'#0a1c26','--c2':'#020a0e', duration:0.5, ease:'power1.out'}, '<');
+
+tl.to({}, {duration:0.06});
+
+tl.to(shards.map(s=>s.el), {x:0, y:0, scale:0.15, rotate:'+=380', duration:0.2, ease:'power4.in', stagger:0.008}, '+=0.03');
+tl.to('#glow', {opacity:1, scale:1.25, duration:0.13, ease:'power2.in'}, '<');
+tl.to('#flash-r', {opacity:0.9, x:-14, duration:0.03}, '-=0.02')
+  .to('#flash-b', {opacity:0.9, x:14, duration:0.03}, '<')
+  .to('#flash', {opacity:1, duration:0.03}, '<')
+  .to(['#flash-r','#flash-b'], {opacity:0, x:0, duration:0.18}, '+=0.01')
+  .to('#flash', {opacity:0, duration:0.18}, '<');
+tl.set(shards.map(s=>s.el), {opacity:0}, '<');
+tl.to('#ring', {opacity:1, width:Math.max(W,H)*1.3, height:Math.max(W,H)*1.3, borderWidth:0, duration:0.4, ease:'power2.out'}, '<');
+tl.to('#glow', {opacity:0.1, scale:1, duration:0.3}, '<+0.05');
+
+tl.to(scene, {'--c1':'#0d2430','--c2':'#03090c', duration:0.6, ease:'power2.out'}, '<');
+
+tl.to('#letters span', {opacity:1, y:0, scale:1, duration:0.3, stagger:0.025, ease:'back.out(2.5)'}, '<+0.06')
+  .to('#underline', {width:160, duration:0.3, ease:'power2.out'}, '-=0.08')
+  .to('#tagline', {opacity:1, duration:0.35}, '-=0.1')
+  .to('#cta', {opacity:1, duration:0.3}, '-=0.05');
+
+// ============================================================
+// SKIP INTRO
+// ============================================================
+document.getElementById('skip').addEventListener('click', () => {
+  tl.progress(1);
+});
+</script>
+</body>
+</html>
