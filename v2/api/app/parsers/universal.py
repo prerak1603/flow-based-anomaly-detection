@@ -7,6 +7,7 @@ from typing import Tuple
 
 from app.parsers.cicflow_parser import CICFlowParser
 from app.parsers.zeek_parser import ZeekParser
+from app.parsers.generic_parser import GenericParser
 
 
 class UniversalParser:
@@ -22,6 +23,7 @@ class UniversalParser:
         self.parsers = [
             CICFlowParser(),
             ZeekParser(),
+            GenericParser(),  # fallback - least specific, must go last
         ]
     
     def parse(self, file_content: bytes, filename: str) -> Tuple[pd.DataFrame, str]:
