@@ -14,5 +14,4 @@ langchain
 langchain-community
 langchain-anthropic
 anthropic
-chromadb
 fastembed
