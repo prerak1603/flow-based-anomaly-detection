@@ -7,6 +7,11 @@ Module      : rag.py
 Description : Retrieval-Augmented Generation layer. Indexes evaluation
               reports and the attack reference document, providing
               grounded context retrieval for the Agent's reasoning.
+
+              Uses FastEmbed (ONNX runtime) instead of sentence-transformers
+              (PyTorch) for embeddings — dramatically lower memory footprint,
+              needed to fit within Render's 512MB free-tier limit alongside
+              the ML ensemble.
 Author      : Prerak Nain
 ================================================================================
 """
@@ -16,7 +21,7 @@ from typing import List
 
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import FastEmbedEmbeddings
 from langchain_community.vectorstores import Chroma
 
 
@@ -37,7 +42,9 @@ class Config:
         RESULTS_DIR / "lightgbm_best_params.txt",
     ]
 
-    EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+    # Small, ONNX-based embedding model — no PyTorch dependency,
+    # low memory footprint, well suited for constrained deployments.
+    EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
     CHUNK_SIZE = 500
     CHUNK_OVERLAP = 50
 
@@ -46,7 +53,7 @@ class AegisRAG:
     """Retrieval layer over Aegis AI's knowledge base."""
 
     def __init__(self):
-        self.embeddings = HuggingFaceEmbeddings(model_name=Config.EMBEDDING_MODEL)
+        self.embeddings = FastEmbedEmbeddings(model_name=Config.EMBEDDING_MODEL)
         self.vectorstore = self._load_or_build_index()
 
     def _load_documents(self) -> List:
@@ -100,8 +107,7 @@ class AegisRAG:
 
 # ==============================================================================
 # SINGLETON — load once, reuse everywhere (avoids reloading the embedding
-# model + Chroma index on every single agent call, which was the cause of
-# the multi-minute latency observed during end-to-end testing)
+# model + Chroma index on every single agent call)
 # ==============================================================================
 
 _rag_instance = None

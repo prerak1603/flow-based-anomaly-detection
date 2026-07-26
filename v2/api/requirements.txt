@@ -14,5 +14,5 @@ langchain
 langchain-community
 langchain-anthropic
 anthropic
-sentence-transformers
 chromadb
+fastembed
