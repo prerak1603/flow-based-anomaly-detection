@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
 COPY new_models/ ./new_models/
+COPY results/ ./results/
 
 # Tell config.py where models live INSIDE the container
 ENV MODELS_DIR=/app/new_models

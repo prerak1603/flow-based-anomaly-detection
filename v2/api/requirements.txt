@@ -9,3 +9,10 @@ pandas==2.1.3
 numpy==1.26.2
 joblib==1.3.2
 pyarrow==14.0.1
+langgraph
+langchain
+langchain-community
+langchain-anthropic
+anthropic
+sentence-transformers
+chromadb
