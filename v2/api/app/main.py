@@ -20,6 +20,8 @@ from app.config import Config
 from app.inference import ModelInference
 from app.schemas import PredictionRequest, PredictionResponse, HealthResponse
 from app.parsers.universal import UniversalParser
+from app.context.attribution import get_attack_context
+from app.context.agent import analyze_threat
 
 # ==============================================================================
 # APPLICATION SETUP
@@ -48,6 +50,11 @@ app.add_middleware(
 model_service = None
 parser_service = UniversalParser()
 
+# Cap on how many flows get full AI-agent analysis per upload.
+# Keeps LLM cost and response latency predictable regardless of
+# how many attacks are found in a single file.
+MAX_AGENT_ANALYSES_PER_REQUEST = 8
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -58,6 +65,15 @@ async def startup_event():
     print("=" * 60)
     model_service = ModelInference()
     print("Model loaded successfully!")
+    print("=" * 60)
+
+    print("Pre-warming RAG knowledge base index...")
+    try:
+        from app.context.rag import get_rag
+        get_rag()
+        print("RAG index ready!")
+    except Exception as e:
+        print(f"WARNING: RAG pre-warm failed ({e}) — will build on first request.")
     print("=" * 60)
 
 
@@ -134,8 +150,9 @@ async def analyze_log(file: UploadFile = File(...)):
     Analyze an uploaded network log file.
 
     Automatically detects format (CICFlowMeter CSV, Zeek conn.log),
-    parses it, and runs each flow through the ensemble model.
-    Returns an aggregated summary of detected attacks.
+    parses it, runs each flow through the ensemble model, and generates
+    full AI-agent threat analysis (attribution + RAG + LLM narrative +
+    rule-based recommendation) for the top highest-confidence attacks.
     """
     global model_service, parser_service
 
@@ -199,15 +216,69 @@ async def analyze_log(file: UploadFile = File(...)):
             if label != "BENIGN"
         )
 
+        # ================================================================
+        # AI AGENT ANALYSIS — capped to top N highest-confidence attacks
+        # ================================================================
+        attack_flows_sorted = sorted(
+            attack_flows, key=lambda x: x["confidence"], reverse=True
+        )
+        flows_for_agent = attack_flows_sorted[:MAX_AGENT_ANALYSES_PER_REQUEST]
+
+        ai_analyses = []
+        for flow in flows_for_agent:
+            row_index = flow["row"]
+            pred = predictions[row_index]
+
+            try:
+                attribution = get_attack_context(df, row_index)
+            except Exception as e:
+                attribution = {
+                    "mode": "degraded",
+                    "available": False,
+                    "reason": f"Attribution failed: {str(e)}",
+                }
+
+            try:
+                agent_report = analyze_threat(
+                    prediction=pred["prediction"],
+                    confidence=pred["confidence"],
+                    is_attack=pred["is_attack"],
+                    attribution=attribution,
+                    row_index=row_index,
+                )
+            except Exception as e:
+                agent_report = {
+                    "error": f"Agent analysis failed: {str(e)}",
+                    "classification": {
+                        "attack_type": pred["prediction"],
+                        "confidence": pred["confidence"],
+                    },
+                }
+
+            ai_analyses.append({
+                "row": row_index,
+                "report": agent_report,
+            })
+
         return {
             "filename": file.filename,
             "detected_format": detected_format,
             "total_flows_analyzed": total_flows,
             "total_attacks_detected": total_attacks,
             "attack_breakdown": attack_counts,
-            "high_confidence_attacks": sorted(
-                attack_flows, key=lambda x: x["confidence"], reverse=True
-            )[:20],
+            "high_confidence_attacks": attack_flows_sorted[:20],
+            "ai_analysis": {
+                "flows_analyzed": len(ai_analyses),
+                "flows_available": len(attack_flows_sorted),
+                "note": (
+                    f"Full AI agent analysis (attribution + RAG + narrative "
+                    f"+ recommendation) generated for the top "
+                    f"{len(ai_analyses)} highest-confidence detections."
+                    if len(attack_flows_sorted) > MAX_AGENT_ANALYSES_PER_REQUEST
+                    else "Full AI agent analysis generated for all detected attacks."
+                ),
+                "reports": ai_analyses,
+            },
             "status": "analysis_complete"
         }
 

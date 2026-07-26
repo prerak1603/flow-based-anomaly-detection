@@ -1,0 +1,13 @@
+Best F1 (weighted): 0.9976
+
+Best hyperparameters:
+  n_estimators: 250
+  max_depth: 10
+  num_leaves: 10
+  learning_rate: 0.04043011948520623
+  min_data_in_leaf: 74
+  feature_fraction: 0.8355693006993479
+  bagging_fraction: 0.8533183479484784
+  bagging_freq: 2
+  lambda_l1: 2.024382544303047e-06
+  lambda_l2: 0.0019460252387672884

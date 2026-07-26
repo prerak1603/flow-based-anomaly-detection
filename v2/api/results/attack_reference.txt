@@ -1,0 +1,170 @@
+AEGIS AI - ATTACK CLASSIFICATION REFERENCE
+============================================
+This document describes the 13 attack categories detected by the Aegis AI
+model, including typical intent, common targets, and network-level
+signatures. Used as a knowledge base source for grounded AI-generated
+threat explanations.
+
+============================================
+BENIGN
+============================================
+Normal, legitimate network traffic with no malicious intent. Baseline
+class against which all attacks are compared.
+
+============================================
+DDoS (Distributed Denial of Service)
+============================================
+Intent: Overwhelm a target's resources (bandwidth, connections, or
+compute) using traffic from many distributed sources, denying service
+to legitimate users.
+Typical targets: Public-facing web servers, API endpoints, DNS servers.
+Common ports targeted: 80 (HTTP), 443 (HTTPS), 53 (DNS).
+Signature: High connection/packet volume from multiple sources,
+sustained over time, often with regular/automated timing patterns
+(low coefficient of variation in inter-arrival times).
+Typical response: Rate limiting, traffic scrubbing, upstream ISP
+filtering, CDN/WAF absorption.
+
+============================================
+DoS Hulk
+============================================
+Intent: Denial of service via a high volume of uniquely-crafted HTTP
+GET requests (randomized headers/parameters) designed to bypass simple
+caching and rate-limiting.
+Typical targets: Web application servers.
+Common ports targeted: 80, 443.
+Signature: High-volume HTTP request flood, often from fewer distinct
+source IPs than a true DDoS.
+Typical response: Web application firewall (WAF) rules, request
+pattern analysis, rate limiting per source.
+
+============================================
+DoS GoldenEye
+============================================
+Intent: Similar to Hulk — exhausts a web server's available HTTP/HTTPS
+connection pool through high-volume request flooding.
+Typical targets: Web application servers.
+Common ports targeted: 80, 443.
+Signature: High-volume HTTP flood with tool-specific header/timing
+patterns distinct from Hulk.
+Typical response: WAF, connection pool tuning, rate limiting.
+
+============================================
+DoS slowloris
+============================================
+Intent: "Low and slow" denial of service — opens many connections and
+sends partial HTTP requests very slowly, holding connections open to
+exhaust the server's connection pool without high bandwidth use.
+Typical targets: Web servers with limited concurrent connection
+capacity (particularly older/single-threaded server architectures).
+Common ports targeted: 80, 443.
+Signature: Low bandwidth, high connection count, unusually long
+connection duration, minimal data transferred per connection.
+Typical response: Connection timeout tuning, reverse proxy with
+connection buffering (e.g. nginx), rate limiting on new connections.
+
+============================================
+DoS Slowhttptest
+============================================
+Intent: Same "low and slow" resource-exhaustion family as slowloris,
+using slow POST request bodies rather than slow headers.
+Typical targets: Web servers accepting POST data.
+Common ports targeted: 80, 443.
+Signature: Low bandwidth, long-duration connections, slow incremental
+data transmission.
+Typical response: Request timeout limits, minimum data-rate enforcement.
+
+============================================
+PortScan
+============================================
+Intent: Reconnaissance — probing a target to discover open ports and
+running services, typically as a precursor to a targeted attack rather
+than an attack in itself.
+Typical targets: Any host; often broad ranges during initial
+reconnaissance.
+Signature: Many connection attempts to different ports on the same
+target, each connection very short, low data volume per connection,
+high failed-connection ratio.
+Typical response: Intrusion detection alerting, treat as an early
+warning signal — investigate what follows from the same source.
+
+============================================
+FTP-Patator
+============================================
+Intent: Brute-force credential guessing against FTP (File Transfer
+Protocol) authentication.
+Typical targets: FTP servers.
+Common ports targeted: 21.
+Signature: Many rapid sequential login attempts from the same source,
+high authentication failure rate.
+Typical response: Account lockout policies, rate limiting on auth
+attempts, IP-based blocking after repeated failures, disable FTP in
+favor of SFTP/FTPS where possible.
+
+============================================
+SSH-Patator
+============================================
+Intent: Brute-force credential guessing against SSH (Secure Shell)
+authentication.
+Typical targets: Servers with SSH remote access enabled.
+Common ports targeted: 22.
+Signature: Many rapid login attempts to port 22, high failure rate.
+Typical response: Key-based authentication instead of passwords,
+fail2ban-style rate limiting, non-default SSH port, IP allowlisting.
+
+============================================
+Web Attack (SQL Injection / XSS / Brute Force)
+============================================
+Intent: Application-layer exploitation — manipulating database queries
+(SQL injection) to extract/modify data, injecting malicious scripts
+(XSS) to execute in victims' browsers, or brute-forcing web application
+login forms.
+Typical targets: Web applications with vulnerable input handling.
+Common ports targeted: 80, 443.
+Signature: HTTP requests containing unusual payloads in parameters or
+body (SQL syntax, script tags, repeated login attempts to a web form).
+Typical response: Input sanitization, parameterized queries, WAF rules,
+content security policy (CSP) headers.
+
+============================================
+Bot
+============================================
+Intent: Traffic consistent with a compromised host under remote
+control as part of a botnet, communicating with a command-and-control
+(C2) infrastructure for instructions.
+Typical targets: The infected host communicates outward to C2 servers;
+the host itself may then be used to attack other targets.
+Signature: Periodic, regular "check-in" communication patterns to a
+small number of external destinations — low timing variability
+consistent with automated/scheduled polling rather than human browsing.
+Typical response: Isolate and reimage the infected host, block C2
+destination, network segmentation to limit lateral spread.
+
+============================================
+Infiltration
+============================================
+Intent: An attacker who has already breached perimeter defenses and is
+now operating inside the network — exploring, escalating privileges,
+or preparing for further action (lateral movement).
+Typical targets: Internal hosts and services not normally exposed
+externally.
+Signature: Unusual internal-to-internal traffic patterns, connections
+between hosts that don't typically communicate, access to internal
+resources outside normal patterns.
+Typical response: Network segmentation, internal traffic monitoring,
+privileged access review, incident response investigation.
+
+============================================
+Heartbleed
+============================================
+Intent: Exploitation of CVE-2014-0160, a specific vulnerability in
+OpenSSL's TLS heartbeat extension implementation. A malformed heartbeat
+request tricks a vulnerable server into leaking chunks of process
+memory, potentially exposing private keys, session data, or credentials.
+Typical targets: Servers running unpatched, vulnerable versions of
+OpenSSL (1.0.1 through 1.0.1f).
+Common ports targeted: 443 and any TLS-enabled service.
+Signature: Malformed TLS heartbeat request/response patterns.
+Typical response: Patch OpenSSL immediately, rotate all potentially
+exposed private keys and credentials, audit for signs of prior
+undetected exploitation.
