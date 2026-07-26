@@ -8,13 +8,14 @@ Description : Retrieval-Augmented Generation layer. Indexes evaluation
               reports and the attack reference document, providing
               grounded context retrieval for the Agent's reasoning.
 
-              Uses FastEmbed (ONNX runtime, no PyTorch) for embeddings and
-              a simple in-memory NumPy similarity search instead of a full
-              vector database. The knowledge base is ~32 small chunks — a
-              database engine (Chroma) adds meaningful memory overhead for
-              a corpus this size with no real benefit. This combination was
-              needed to fit within Render's 512MB free-tier memory limit
-              alongside the ML ensemble.
+              Uses TF-IDF (scikit-learn) instead of neural embeddings.
+              Even fastembed's ONNX model, loaded alongside the ML ensemble,
+              exceeded Render's 512MB free-tier limit. For a small (~32
+              chunk), vocabulary-distinctive corpus — attack names like
+              "DDoS" or "Heartbleed" appear near-verbatim in both documents
+              and queries — TF-IDF keyword matching is a reasonable
+              trade-off: no neural model loaded at all, using scikit-learn,
+              which is already a dependency for the ML ensemble.
 Author      : Prerak Nain
 ================================================================================
 """
@@ -23,10 +24,10 @@ import pickle
 from pathlib import Path
 from typing import List
 
-import numpy as np
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import FastEmbedEmbeddings
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 class Config:
@@ -46,9 +47,6 @@ class Config:
         RESULTS_DIR / "lightgbm_best_params.txt",
     ]
 
-    # Small, ONNX-based embedding model — no PyTorch dependency,
-    # low memory footprint, well suited for constrained deployments.
-    EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
     CHUNK_SIZE = 500
     CHUNK_OVERLAP = 50
 
@@ -57,15 +55,15 @@ class AegisRAG:
     """
     Retrieval layer over Aegis AI's knowledge base.
 
-    Uses a plain in-memory NumPy array for similarity search — appropriate
-    for a small, static corpus (tens of chunks), avoiding the overhead of
-    a full vector database.
+    Uses TF-IDF keyword-based similarity rather than neural embeddings —
+    no model to load into memory, appropriate for a small, vocabulary-
+    distinctive corpus under real memory constraints.
     """
 
     def __init__(self):
-        self.embeddings = FastEmbedEmbeddings(model_name=Config.EMBEDDING_MODEL)
+        self.vectorizer: TfidfVectorizer = None
         self.chunks: List[str] = []
-        self.vectors: np.ndarray = None
+        self.chunk_vectors = None
         self._load_or_build_index()
 
     def _load_documents(self) -> List:
@@ -85,7 +83,8 @@ class AegisRAG:
             with open(Config.INDEX_FILE, "rb") as f:
                 data = pickle.load(f)
             self.chunks = data["chunks"]
-            self.vectors = data["vectors"]
+            self.vectorizer = data["vectorizer"]
+            self.chunk_vectors = data["chunk_vectors"]
             print(f"[RAG] Loaded {len(self.chunks)} chunks from disk.")
             return
 
@@ -105,37 +104,36 @@ class AegisRAG:
         self.chunks = [doc.page_content for doc in split_docs]
         print(f"[RAG] Split into {len(self.chunks)} chunks")
 
-        print("[RAG] Computing embeddings...")
-        raw_vectors = self.embeddings.embed_documents(self.chunks)
-        self.vectors = np.array(raw_vectors, dtype=np.float32)
+        print("[RAG] Fitting TF-IDF vectorizer...")
+        self.vectorizer = TfidfVectorizer(stop_words="english", max_features=2000)
+        self.chunk_vectors = self.vectorizer.fit_transform(self.chunks)
 
-        # Persist to disk so future startups skip re-embedding
         with open(Config.INDEX_FILE, "wb") as f:
-            pickle.dump({"chunks": self.chunks, "vectors": self.vectors}, f)
+            pickle.dump(
+                {
+                    "chunks": self.chunks,
+                    "vectorizer": self.vectorizer,
+                    "chunk_vectors": self.chunk_vectors,
+                },
+                f,
+            )
 
         print("[RAG] Index built and persisted.")
 
     def retrieve(self, query: str, k: int = 3) -> List[str]:
         """Return the top-k most relevant chunks of text for a query."""
-        if self.vectors is None or len(self.chunks) == 0:
+        if self.vectorizer is None or len(self.chunks) == 0:
             return []
 
-        query_vector = np.array(self.embeddings.embed_query(query), dtype=np.float32)
+        query_vector = self.vectorizer.transform([query])
+        similarities = cosine_similarity(query_vector, self.chunk_vectors)[0]
 
-        # Cosine similarity: dot product of normalized vectors
-        query_norm = query_vector / (np.linalg.norm(query_vector) + 1e-9)
-        chunk_norms = self.vectors / (
-            np.linalg.norm(self.vectors, axis=1, keepdims=True) + 1e-9
-        )
-        similarities = chunk_norms @ query_norm
-
-        top_k_indices = np.argsort(similarities)[::-1][:k]
+        top_k_indices = similarities.argsort()[::-1][:k]
         return [self.chunks[i] for i in top_k_indices]
 
 
 # ==============================================================================
-# SINGLETON — load once, reuse everywhere (avoids reloading the embedding
-# model + index on every single agent call)
+# SINGLETON — load once, reuse everywhere
 # ==============================================================================
 
 _rag_instance = None
