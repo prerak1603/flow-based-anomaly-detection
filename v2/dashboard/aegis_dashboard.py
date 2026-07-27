@@ -412,6 +412,207 @@ with tab1:
                 df_detections.columns = ["Flow #", "Attack Type", "Confidence"]
                 st.dataframe(df_detections, use_container_width=True, hide_index=True)
 
+            ai_analysis = results.get('ai_analysis', {})
+            reports = ai_analysis.get('reports', [])
+
+            if reports:
+                st.markdown("""
+                <style>
+                @keyframes pulse-glow {
+                    0% { box-shadow: 0 0 6px rgba(255,23,68,0.4); }
+                    50% { box-shadow: 0 0 18px rgba(255,23,68,0.75); }
+                    100% { box-shadow: 0 0 6px rgba(255,23,68,0.4); }
+                }
+                .threat-card {
+                    background: linear-gradient(135deg, #1a1f2e 0%, #131722 100%);
+                    border-radius: 10px;
+                    padding: 18px 22px;
+                    margin-bottom: 14px;
+                    border-left: 5px solid #ff5252;
+                }
+                .threat-card.critical {
+                    border-left-color: #ff1744;
+                    animation: pulse-glow 2.2s infinite;
+                }
+                .threat-card.high { border-left-color: #ff5252; }
+                .threat-card.medium { border-left-color: #ffab00; }
+                .threat-card.low { border-left-color: #00e676; }
+
+                .threat-top-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 10px;
+                }
+                .threat-type {
+                    font-size: 1.15rem;
+                    font-weight: 700;
+                    color: #f5f5f5;
+                    letter-spacing: 0.3px;
+                }
+                .severity-badge {
+                    padding: 4px 14px;
+                    border-radius: 20px;
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    letter-spacing: 0.8px;
+                    text-transform: uppercase;
+                }
+                .severity-badge.critical { background: #ff1744; color: #fff; }
+                .severity-badge.high { background: #ff5252; color: #fff; }
+                .severity-badge.medium { background: #ffab00; color: #1a1f2e; }
+                .severity-badge.low { background: #00e676; color: #1a1f2e; }
+
+                .confidence-bar-bg {
+                    background: #2a2f3d;
+                    border-radius: 6px;
+                    height: 8px;
+                    width: 100%;
+                    margin: 6px 0 14px 0;
+                    overflow: hidden;
+                }
+                .confidence-bar-fill {
+                    height: 100%;
+                    border-radius: 6px;
+                }
+                .threat-meta {
+                    font-size: 0.85rem;
+                    color: #9aa1b1;
+                    margin-bottom: 10px;
+                }
+                .threat-meta b { color: #d0d4dd; }
+
+                .disclosure-note {
+                    font-size: 0.78rem;
+                    color: #7d8494;
+                    font-style: italic;
+                    border-left: 2px solid #2a2f3d;
+                    padding-left: 10px;
+                    margin: 8px 0 14px 0;
+                }
+
+                .narrative-block {
+                    background: #0f1320;
+                    border-radius: 8px;
+                    padding: 12px 16px;
+                    font-size: 0.9rem;
+                    color: #c3c8d4;
+                    margin-bottom: 12px;
+                    border: 1px dashed #2a2f3d;
+                }
+                .narrative-block.pending {
+                    color: #6b7280;
+                    font-style: italic;
+                }
+
+                .action-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    background: #171c2b;
+                    border-radius: 8px;
+                    padding: 10px 16px;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }
+                .action-text {
+                    font-size: 0.88rem;
+                    color: #e0e0e0;
+                    font-weight: 600;
+                }
+                .urgency-chip {
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                    padding: 3px 10px;
+                    border-radius: 14px;
+                    background: #ff5252;
+                    color: #fff;
+                    text-transform: uppercase;
+                }
+                .autoblock-chip {
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                    padding: 3px 10px;
+                    border-radius: 14px;
+                    background: #2a2f3d;
+                    color: #00e676;
+                    border: 1px solid #00e676;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+
+                st.markdown("### 🧠 AI Agent Threat Analysis")
+                st.markdown(
+                    f"<p style='color:#9aa1b1; font-size:0.9rem; margin-top:-8px;'>"
+                    f"Full attribution + RAG-backed context + recommendation generated for "
+                    f"<b style='color:#e0e0e0;'>{ai_analysis.get('flows_analyzed', 0)}</b> of "
+                    f"<b style='color:#e0e0e0;'>{ai_analysis.get('flows_available', 0)}</b> "
+                    f"highest-confidence flows.</p>",
+                    unsafe_allow_html=True
+                )
+
+                severity_colors = {
+                    "CRITICAL": "#ff1744", "HIGH": "#ff5252",
+                    "MEDIUM": "#ffab00", "LOW": "#00e676"
+                }
+
+                for item in reports:
+                    r = item.get('report', {})
+                    cls = r.get('classification', {})
+                    sev = r.get('severity', {})
+                    attrib = r.get('attribution', {})
+                    rec = r.get('recommendation', {})
+                    narrative = r.get('narrative', '')
+
+                    sev_level = sev.get('level', 'LOW')
+                    sev_class = sev_level.lower()
+                    sev_color = severity_colors.get(sev_level, '#00e676')
+                    confidence_pct = cls.get('confidence', 0) * 100
+
+                    is_pending_narrative = narrative.strip().startswith('[LLM unavailable')
+                    narrative_class = "narrative-block pending" if is_pending_narrative else "narrative-block"
+                    narrative_display = (
+                        "⏳ AI-generated narrative will appear here once the language model is connected."
+                        if is_pending_narrative else f"“{narrative}”"
+                    )
+
+                    disclosure_html = ""
+                    if attrib.get('disclosure'):
+                        disclosure_html = f"<div class='disclosure-note'>ℹ️ {attrib['disclosure']}</div>"
+
+                    port_line = ""
+                    if attrib.get('destination_port'):
+                        port_line = (
+                            f"Target port <b>{attrib['destination_port']}</b> "
+                            f"({attrib.get('likely_service', 'unknown service')})"
+                        )
+
+                    urgency = rec.get('urgency', 'monitor')
+                    action = rec.get('recommended_action', 'Review flow manually')
+                    auto_block = rec.get('auto_blockable', False)
+
+                    card_html = f"""
+                    <div class="threat-card {sev_class}">
+                        <div class="threat-top-row">
+                            <span class="threat-type">🚩 {cls.get('attack_type', 'Unknown')} — Flow #{item.get('row')}</span>
+                            <span class="severity-badge {sev_class}">{sev_level}</span>
+                        </div>
+                        <div class="threat-meta"><b>{confidence_pct:.2f}%</b> model confidence · {port_line}</div>
+                        <div class="confidence-bar-bg">
+                            <div class="confidence-bar-fill" style="width:{confidence_pct}%; background:{sev_color};"></div>
+                        </div>
+                        {disclosure_html}
+                        <div class="{narrative_class}">{narrative_display}</div>
+                        <div class="action-row">
+                            <span class="action-text">🛡️ {action}</span>
+                            <span style="display:flex; gap:8px;">
+                                <span class="urgency-chip">{urgency}</span>
+                                {"<span class='autoblock-chip'>AUTO-BLOCKABLE</span>" if auto_block else ""}
+                            </span>
+                        </div>
+                    </div>
+                    """
+                    st.markdown(card_html, unsafe_allow_html=True)
             st.markdown("### 📄 Export Report")
             pdf_buffer = generate_pdf_report(
                 st.session_state.get('last_client', 'Client'),
