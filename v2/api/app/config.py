@@ -24,3 +24,8 @@ class Config:
     
     MIN_CONFIDENCE_THRESHOLD = 0.5
     EXPECTED_FEATURES = 78
+
+    # Upload limits - protects the free-tier instance from being
+    # knocked over by oversized files
+    MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024   # 2 MB
+    MAX_ROWS = 2000

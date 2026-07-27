@@ -159,7 +159,23 @@ async def analyze_log(file: UploadFile = File(...)):
     try:
         content = await file.read()
 
+        if len(content) > Config.MAX_FILE_SIZE_BYTES:
+            max_mb = Config.MAX_FILE_SIZE_BYTES / (1024 * 1024)
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large ({len(content) / (1024*1024):.1f} MB). "
+                       f"Maximum allowed is {max_mb:.0f} MB. "
+                       f"For larger datasets, please split the file or contact us directly."
+            )
+
         df, detected_format = parser_service.parse(content, file.filename)
+
+        if len(df) > Config.MAX_ROWS:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Too many rows ({len(df):,}). Maximum allowed per upload is "
+                       f"{Config.MAX_ROWS:,}. Please split the file into smaller batches."
+            )
 
         if detected_format != "CICFlowMeter CSV":
             return {
