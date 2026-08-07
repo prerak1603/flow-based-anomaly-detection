@@ -14,3 +14,7 @@ langchain
 langchain-community
 langchain-anthropic
 anthropic
+sqlalchemy==2.0.23
+   psycopg2-binary==2.9.9
+
+slowapi==0.1.9

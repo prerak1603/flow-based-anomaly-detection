@@ -60,3 +60,7 @@ v2/models_tuned/*.pkl
 v2/models_calibrated/*.pkl
 v2/api/app/context/chroma_db/
 v1/api/target/
+v2/api/aegis.db
+*.db
+.env
+*.env

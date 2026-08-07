@@ -98,10 +98,8 @@ def retrieve_context(state: AgentState) -> AgentState:
     Query the RAG knowledge base for information about the detected attack type.
     Retrieves: attack intent, typical targets, historical model performance.
     """
-    from app.context.rag import AegisRAG
-
-    rag = AegisRAG()
-
+    from app.context.rag import get_rag
+    rag = get_rag()
     prediction = state["prediction"]
     queries = [
         f"What is the intent and typical target of a {prediction} attack?",
@@ -203,9 +201,9 @@ def enrich_context(state: AgentState) -> AgentState:
     For HIGH/CRITICAL threats, retrieve additional remediation-specific
     context from the knowledge base — "what to actually DO about this."
     """
-    from app.context.rag import AegisRAG
+    from app.context.rag import get_rag
 
-    rag = AegisRAG()
+    rag = get_rag()
 
     prediction = state["prediction"]
     enrichment_queries = [
