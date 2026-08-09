@@ -35,6 +35,7 @@ from app.context.agent import analyze_threat
 
 from app.db import get_db, init_db, Customer, Upload, Detection
 from app.auth import get_current_customer
+from app.webhooks import router as webhooks_router
 
 # ==============================================================================
 # LOGGING
@@ -57,7 +58,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
-
+app.include_router(webhooks_router)
 # --- Rate limiting ------------------------------------------------------------
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
