@@ -3,14 +3,15 @@
 <div align="center">
 
 ![Python](https://img.shields.io/badge/Python-FastAPI-blue?style=for-the-badge&logo=python)
+![Next.js](https://img.shields.io/badge/Frontend-Next.js_16-black?style=for-the-badge&logo=next.js)
 ![XGBoost](https://img.shields.io/badge/Ensemble-RF_XGB_LGB-orange?style=for-the-badge)
 ![LangGraph](https://img.shields.io/badge/Agent-LangGraph-purple?style=for-the-badge)
-![Docker](https://img.shields.io/badge/Docker-Deployed-2496ED?style=for-the-badge&logo=docker)
+![Postgres](https://img.shields.io/badge/DB-Neon_Postgres-00E599?style=for-the-badge&logo=postgresql&logoColor=black)
 ![Status](https://img.shields.io/badge/Status-LIVE-brightgreen?style=for-the-badge)
 
-**A production-grade network security platform: an ML ensemble that detects attacks, a sliding-window module that attributes them, a RAG knowledge base that grounds explanations, and a LangGraph agent that reasons about severity and response — all wired into a live API and dashboard.**
+**A production-grade, multi-tenant network security platform: an ML ensemble that detects attacks, a sliding-window module that attributes them, a RAG knowledge base that grounds explanations, and a LangGraph agent that reasons about severity and response — all behind per-customer API keys, wired into a live Next.js frontend and FastAPI backend.**
 
-[Live Dashboard](#live-deployments) · [Architecture](#architecture) · [Results](#results) · [Setup](#setup)
+[Live App](#live-deployments) · [Architecture](#architecture) · [Results](#results) · [Setup](#setup)
 
 </div>
 
@@ -31,22 +32,29 @@ Upload a network log. It tells you:
 
 ## Live Deployments
 
-| Component | URL |
-|---|---|
-| **Landing Page** | [prerak1603.github.io/flow-based-anomaly-detection](https://prerak1603.github.io/flow-based-anomaly-detection/) |
-| **Dashboard** | [flow-based-anomaly-detection.streamlit.app](https://flow-based-anomaly-detection-hqnj5ccn9xcz4ojug47sen.streamlit.app) |
-| **API** | [aegis-ai-v2.onrender.com](https://aegis-ai-v2.onrender.com) |
+| Component | Platform | URL |
+|---|---|---|
+| **Frontend** (landing page + `/audit` + `/history`) | Vercel | [aegis-ai-frontend-tau.vercel.app](https://aegis-ai-frontend-tau.vercel.app) |
+| **API** | Render | [aegis-ai-v2.onrender.com](https://aegis-ai-v2.onrender.com) |
+| **Database** | Neon (Postgres) | — |
+
+Sign-up is handled by Clerk on the frontend; a webhook auto-provisions a real backend `Customer` + API key the moment someone signs up, so every user gets their own isolated account (see [Architecture](#architecture)).
 
 ```bash
 # Health check
 curl https://aegis-ai-v2.onrender.com/health
 
-# Analyze a network log — auto-detects format, runs full pipeline
+# Analyze a network log — auto-detects format, runs full pipeline (requires an API key)
 curl -X POST https://aegis-ai-v2.onrender.com/analyze \
+  -H "X-API-Key: aegis_xxxxxxxxxxxx" \
   -F "file=@network_flows.csv"
 ```
 
 > Free-tier hosting sleeps after inactivity — first request after idle time may take 30-50s to wake up.
+
+> **Superseded:** the original GitHub Pages landing page and Streamlit dashboard have been replaced by the Next.js frontend above (full feature parity reached, including PDF export and upload history) and are no longer maintained.
+
+> **Note:** Clerk is currently running in test/dev mode on the live deployment, not production keys — fine for demos, but flag it before treating this as fully production-ready for real signups.
 
 ---
 
@@ -70,9 +78,29 @@ Each improvement is a real, verified fix — SMOTE + WGAN-GP for the Heartbleed 
 ## Architecture
 
 ```
-CLIENT UPLOADS RAW NETWORK LOG (CICFlowMeter CSV / Zeek conn.log)
-                    │
-                    ▼
+BROWSER
+   │
+   │  signs in via Clerk
+   ▼
+┌────────────────────────────────────────────────────────────┐
+│  NEXT.JS FRONTEND (Vercel)                                    │
+│  Landing page · /audit (upload + live results) · /history     │
+│                                                                │
+│  Server-side route handlers (/api/analyze, /api/health)       │
+│  look up the signed-in user's Aegis API key server-side        │
+│  (Clerk private metadata) and forward it to the backend —       │
+│  the browser never sees it, and CORS never comes into play.    │
+└──────────────────────────┬────────────────────────────────────┘
+                            │  X-API-Key: aegis_xxxxx
+                            ▼
+┌────────────────────────────────────────────────────────────┐
+│  FASTAPI BACKEND (Render)                                      │
+│  Auth (per-customer API key) → rate limiting → CORS lockdown   │
+└──────────────────────────┬────────────────────────────────────┘
+                            │
+       ┌────────────────────┴────────────────────┐
+       │  RAW NETWORK LOG (CICFlowMeter CSV / Zeek conn.log)
+       ▼
 ┌───────────────────────────────────────────────────┐
 │  UNIVERSAL PARSER                                   │
 │  Auto-detects format, extracts 78 features           │
@@ -109,11 +137,21 @@ CLIENT UPLOADS RAW NETWORK LOG (CICFlowMeter CSV / Zeek conn.log)
         └───────────────┬─────────────────┘
                         ▼
         WHAT / WHERE / HOW / WHY / RECOMMENDATION
+                        │
+                        ▼
+        ┌───────────────────────────────┐
+        │  NEON POSTGRES                  │
+        │  Customer / Upload / Detection   │
+        │  — every row scoped to           │
+        │    customer_id (tenant isolation) │
+        └───────────────────────────────┘
 ```
 
 **Design principle:** the LLM explains, it doesn't decide. Severity assessment and recommended actions are deterministic rule-based logic — auditable and predictable. The LLM (Claude Haiku) only writes the narrative explanation and a one-sentence justification, grounded in RAG-retrieved context.
 
 Full agent analysis is capped to the top 8 highest-confidence detections per upload, keeping cost and latency predictable regardless of file size.
+
+**Multi-tenancy:** every signup on the frontend fires a Clerk `user.created` webhook (`/webhooks/clerk`, signature-verified via Svix) that provisions a real `Customer` row and a unique API key, written back into Clerk's private user metadata. Every table downstream (`Upload`, `Detection`) carries a `customer_id`, and every query filters on it — so one tenant can never read another's data, on shared infrastructure, by construction rather than convention.
 
 ---
 
@@ -143,25 +181,39 @@ The system detects which mode applies automatically and never fabricates attribu
 
 **Backend / Deployment**
 - FastAPI, Uvicorn, Docker
+- SQLAlchemy ORM over Neon (managed Postgres) — SQLite fallback for local dev
+- Per-customer API key auth, `slowapi` rate limiting, locked-down CORS, structured logging
+- Svix (webhook signature verification)
 - Render (API hosting)
 
 **Frontend**
-- Streamlit (client-facing dashboard, PDF report generation via ReportLab)
-- GSAP + vanilla JS (animated landing page)
-- GitHub Pages (landing page hosting)
+- Next.js 16 (App Router, TypeScript) on Vercel
+- Clerk (auth, sign-up/sign-in, backs the per-customer provisioning webhook)
+- Tailwind CSS v4, Framer Motion (animation), Recharts (attack breakdown chart)
+- React Three Fiber + drei (3D flow visualization on the landing page)
+- jsPDF (client-side PDF report export)
+
+**Retired**
+- Streamlit dashboard and the GitHub Pages landing page — both superseded by the Next.js frontend above once it reached feature parity (PDF export, upload history).
 
 ---
 
 ## Project Structure
 
+This backend/ML repo (`cic_ids_project`) and the frontend live in separate repos.
+
 ```
-cic_ids_project/
+cic_ids_project/                  (this repo — backend + ML)
 ├── v1/                          ← original NSL-KDD / Java Spring Boot iteration
 │
 ├── v2/
 │   ├── api/
 │   │   ├── app/
-│   │   │   ├── main.py           ← FastAPI app, /predict + /analyze
+│   │   │   ├── main.py           ← FastAPI app: /predict, /analyze, /history/*, rate limiting, CORS
+│   │   │   ├── auth.py            ← per-customer API key auth (get_current_customer dependency)
+│   │   │   ├── db.py              ← SQLAlchemy models (Customer/Upload/Detection), Neon/SQLite engine
+│   │   │   ├── webhooks.py        ← Clerk user.created webhook → provisions Customer + API key
+│   │   │   ├── config.py          ← model paths, upload size/row limits
 │   │   │   ├── inference.py       ← ensemble model wrapper
 │   │   │   ├── parsers/           ← universal format detection
 │   │   │   └── context/
@@ -174,24 +226,45 @@ cic_ids_project/
 │   │   └── Dockerfile
 │   │
 │   ├── dashboard/
-│   │   └── aegis_dashboard.py     ← Streamlit client dashboard
+│   │   └── aegis_dashboard.py     ← Streamlit dashboard (retired, superseded by aegis-frontend)
 │   │
 │   ├── notebooks/                 ← training pipeline (01-13, SMOTE → Platt Scaling)
 │   └── results/                    ← evaluation reports, attack reference doc
 │
 └── docs/
-    └── index.html                 ← animated landing page (GitHub Pages)
+    └── index.html                 ← original animated landing page (GitHub Pages, retired)
+
+aegis-frontend/                   (separate repo — deployed to Vercel)
+├── app/
+│   ├── page.tsx                   ← landing page (3D flow viz, pipeline explainer, model stats)
+│   ├── audit/page.tsx             ← upload → live analysis → threat cards (Clerk-protected)
+│   ├── history/page.tsx           ← past uploads/detections (Clerk-protected)
+│   ├── sign-in/, sign-up/         ← Clerk auth pages
+│   └── api/
+│       ├── analyze/route.ts       ← server-side proxy to Render /analyze, attaches API key
+│       ├── health/route.ts        ← server-side proxy to Render /health
+│       └── history/               ← server-side proxy to Render /history/*
+├── components/                    ← Hero3D, UploadZone, ThreatCard, AttackChart, MetricCard, Nav
+├── lib/
+│   ├── getUserApiKey.ts           ← resolves the signed-in user's Aegis API key via Clerk metadata
+│   └── generatePdf.ts             ← client-side PDF report export (jsPDF)
+└── middleware.ts                  ← Clerk route protection for /audit and /history
 ```
 
 ---
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/health` | System + model health check |
-| POST | `/predict` | Classify a single 78-feature vector |
-| POST | `/analyze` | Upload a log file — full pipeline: parse → classify → attribute → agent analysis |
+All endpoints except `/health` require an `X-API-Key` header (a customer's Aegis API key) and are rate-limited.
+
+| Method | Endpoint | Auth | Rate limit | Description |
+|---|---|---|---|---|
+| GET | `/health` | none | none | System + model health check |
+| POST | `/predict` | API key | 30/min | Classify a single 78-feature vector |
+| POST | `/analyze` | API key | 5/min | Upload a log file — full pipeline: parse → classify → attribute → agent analysis → persisted to Postgres |
+| GET | `/history/uploads` | API key | 60/min | List the authenticated customer's past uploads |
+| GET | `/history/detections` | API key | 60/min | List the authenticated customer's past detections (optionally filtered by `upload_id`) |
+| POST | `/webhooks/clerk` | Svix signature | — | Clerk `user.created` webhook — provisions a `Customer` + API key on signup |
 
 ### Sample `/analyze` Response (abridged)
 
@@ -239,13 +312,16 @@ cic_ids_project/
 - [x] FastAPI backend, Dockerized, deployed live
 - [x] Universal log parser (CICFlowMeter + Zeek auto-detection)
 - [x] End-to-end file upload → prediction pipeline
-- [x] Streamlit client dashboard with PDF report generation
-- [x] Animated landing page, deployed to GitHub Pages
 - [x] Sliding-window host-centric attribution (adaptive full-IP / degraded-port)
 - [x] RAG knowledge base (13-class attack reference + evaluation reports)
 - [x] LangGraph agent — severity assessment, narrative generation, recommendations
+- [x] Rate limiting + per-customer API key authentication
+- [x] Multi-tenant Postgres persistence (Neon), locked-down CORS, structured logging
+- [x] Clerk-based sign-up with automatic backend account provisioning (webhook)
+- [x] Next.js frontend on Vercel (landing page, live audit, history) — replaces the Streamlit dashboard and GitHub Pages landing page
+- [x] Client-side PDF report export
+- [ ] Switch Clerk from test/dev keys to production keys
 - [ ] Live threat-intel IP reputation lookup (AbuseIPDB / AlienVault OTX)
-- [ ] Rate limiting + API authentication (required before real client onboarding)
 - [ ] Automated test suite + CI/CD
 
 ---
