@@ -175,8 +175,7 @@ The system detects which mode applies automatically and never fabricates attribu
 
 **Agent / RAG**
 - LangGraph (multi-node agent orchestration)
-- LangChain + Chroma (vector store)
-- sentence-transformers (local embeddings)
+- TF-IDF keyword retrieval (scikit-learn) — deliberately not neural embeddings; a Chroma + sentence-transformers store was tried first and blew past Render's 512MB free-tier memory ceiling, so retrieval was redesigned around TF-IDF for the small, vocabulary-distinctive knowledge base this agent actually queries
 - Anthropic Claude Haiku (narrative generation)
 
 **Backend / Deployment**
