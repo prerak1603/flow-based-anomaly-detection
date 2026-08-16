@@ -12,6 +12,7 @@ Version: 2.1.1 — adds rate limiting, locked-down CORS, structured logging,
 ================================================================================
 """
 
+import asyncio
 import logging
 import time
 import numpy as np
@@ -189,6 +190,54 @@ async def predict(
 # ANALYZE UPLOADED FILE (auth required, rate limited, results persisted per-tenant)
 # ==============================================================================
 
+async def _analyze_one_flow(df, predictions: dict, flow: dict) -> tuple[int, dict, dict]:
+    """
+    Run attribution + the LangGraph agent for a single flow.
+
+    `get_attack_context` and `analyze_threat` are both synchronous, blocking
+    calls (the agent's LLM step goes through langchain-anthropic's sync
+    `ChatAnthropic.invoke`, which is a blocking HTTP request under the hood).
+    Wrapping the blocking work in `asyncio.to_thread` lets `asyncio.gather`
+    run up to MAX_AGENT_ANALYSES_PER_REQUEST of these concurrently — each
+    Anthropic call spends most of its time waiting on the network, so
+    threads free the event loop instead of serializing that wait 8x.
+    """
+    row_index = flow["row"]
+    pred = predictions[row_index]
+
+    def _blocking_work() -> dict:
+        try:
+            attribution = get_attack_context(df, row_index)
+        except Exception as e:
+            logger.warning(f"Attribution failed for row {row_index}: {e}")
+            attribution = {
+                "mode": "degraded",
+                "available": False,
+                "reason": "Attribution failed",
+            }
+
+        try:
+            return analyze_threat(
+                prediction=pred["prediction"],
+                confidence=pred["confidence"],
+                is_attack=pred["is_attack"],
+                attribution=attribution,
+                row_index=row_index,
+            )
+        except Exception as e:
+            logger.error(f"Agent analysis failed for row {row_index}: {e}", exc_info=True)
+            return {
+                "error": "Agent analysis failed",
+                "classification": {
+                    "attack_type": pred["prediction"],
+                    "confidence": pred["confidence"],
+                },
+            }
+
+    agent_report = await asyncio.to_thread(_blocking_work)
+    return row_index, pred, agent_report
+
+
 @app.post("/analyze")
 @limiter.limit("5/minute")
 async def analyze_log(
@@ -304,39 +353,15 @@ async def analyze_log(
         attack_flows_sorted = sorted(attack_flows, key=lambda x: x["confidence"], reverse=True)
         flows_for_agent = attack_flows_sorted[:MAX_AGENT_ANALYSES_PER_REQUEST]
 
+        # Run the agent (Anthropic call included) for all flows concurrently
+        # instead of one after another — this was the sequential loop that
+        # made 8 flows take 60+ seconds and trip the frontend's timeout.
+        flow_results = await asyncio.gather(
+            *(_analyze_one_flow(df, predictions, flow) for flow in flows_for_agent)
+        )
+
         ai_analyses = []
-        for flow in flows_for_agent:
-            row_index = flow["row"]
-            pred = predictions[row_index]
-
-            try:
-                attribution = get_attack_context(df, row_index)
-            except Exception as e:
-                logger.warning(f"Attribution failed for row {row_index}: {e}")
-                attribution = {
-                    "mode": "degraded",
-                    "available": False,
-                    "reason": "Attribution failed",
-                }
-
-            try:
-                agent_report = analyze_threat(
-                    prediction=pred["prediction"],
-                    confidence=pred["confidence"],
-                    is_attack=pred["is_attack"],
-                    attribution=attribution,
-                    row_index=row_index,
-                )
-            except Exception as e:
-                logger.error(f"Agent analysis failed for row {row_index}: {e}", exc_info=True)
-                agent_report = {
-                    "error": "Agent analysis failed",
-                    "classification": {
-                        "attack_type": pred["prediction"],
-                        "confidence": pred["confidence"],
-                    },
-                }
-
+        for row_index, pred, agent_report in flow_results:
             ai_analyses.append({"row": row_index, "report": agent_report})
 
             severity = None
