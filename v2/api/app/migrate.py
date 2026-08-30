@@ -35,8 +35,7 @@ _CUSTOMER_COLUMNS_SQL = {
     "tier": "VARCHAR DEFAULT 'free'",
     "usage_count": "INTEGER DEFAULT 0",
     "usage_reset_date": "TIMESTAMP",
-    "ls_customer_id": "VARCHAR",
-    "ls_subscription_id": "VARCHAR",
+    "gumroad_subscription_id": "VARCHAR",
     "slack_webhook_url": "VARCHAR",
     "alert_email": "VARCHAR",
 }

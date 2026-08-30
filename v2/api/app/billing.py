@@ -1,29 +1,39 @@
 """
-Aegis AI v2 - Billing (Lemon Squeezy) & tier enforcement
+Aegis AI v2 - Billing (Gumroad) & tier enforcement
 ================================================================================
 
-Payment gateway: Lemon Squeezy, not Stripe. Stripe does not onboard
-India-based individuals/businesses for standard accounts, so a merchant of
-record was used instead — Lemon Squeezy legally sells on our behalf, which
-means it also handles global sales tax/VAT/GST automatically and onboards
-individual sellers with no registered company required. It was picked over
-Razorpay (India-native, but doesn't do global tax compliance and is INR-first)
-specifically because its API shape — server creates a checkout, gets back a
-hosted URL, redirects the browser there; webhooks keep tier in sync; a
-hosted portal URL handles self-serve billing — maps directly onto this
-module's structure with no architectural rework.
+Payment gateway: Gumroad, the third one this project has landed on.
+Stripe doesn't onboard India-based individuals. Lemon Squeezy was the next
+choice (same merchant-of-record category — handles global VAT/GST
+automatically, no registered company required) but its store-creation
+signup was returning persistent 429s with no ETA on a fix. Gumroad is the
+same merchant-of-record category, with the lowest-friction signup of the
+options considered.
 
-Everything Lemon Squeezy-related lives here and nowhere else: the frontend
-BFF never sees the API key, it only ever calls the /billing/* endpoints in
-main.py, which call into this module. LEMONSQUEEZY_API_KEY lives on Render
-only. There's no official Lemon Squeezy Python SDK worth depending on, so
-this talks to their REST API directly with `requests` (already a
-transitive dependency here, same as the existing Clerk webhook handler).
+Gumroad's API is deliberately simple compared to Stripe/Lemon Squeezy,
+which shapes a few real differences here:
+  - Each tier (Starter, Pro) is its own Gumroad *product*, not a variant/
+    price under one product — so a sale's product id tells us the tier
+    directly, no custom-data round-trip needed.
+  - "Creating a checkout session" is just building a URL
+    (https://<seller>.gumroad.com/l/<permalink>?email=...&wanted=true) —
+    there's no server-side session object, so no network call and nothing
+    that can fail with a gateway error the way Stripe/LS checkout could.
+  - Gumroad has no documented "create a billing portal session" API the
+    way Stripe/LS do. A subscriber manages/cancels via the link in their
+    purchase receipt email, or by signing into https://gumroad.com/library
+    with the email they purchased with. create_portal_session() below
+    returns that generic library URL — it is NOT a personalized deep link,
+    which is a real, acknowledged gap versus the Stripe/LS experience.
+  - Gumroad's webhook ("ping") signing isn't documented with the same
+    rigor as Stripe/LS's. Rather than trust the ping payload, every
+    webhook here re-fetches the sale from Gumroad's authenticated API
+    using our own access token before acting on it — that authenticated
+    fetch, not the ping signature, is the actual trust boundary. See
+    app/webhooks.py.
 ================================================================================
 """
 
-import hashlib
-import hmac
 import logging
 import os
 from datetime import datetime
@@ -42,20 +52,25 @@ logger = logging.getLogger("aegis")
 # CONFIG
 # ==============================================================================
 
-LEMONSQUEEZY_API_BASE = "https://api.lemonsqueezy.com/v1"
-LEMONSQUEEZY_API_KEY = os.getenv("LEMONSQUEEZY_API_KEY")
-LEMONSQUEEZY_STORE_ID = os.getenv("LEMONSQUEEZY_STORE_ID")
-LEMONSQUEEZY_WEBHOOK_SECRET = os.getenv("LEMONSQUEEZY_WEBHOOK_SECRET")
+GUMROAD_API_BASE = "https://api.gumroad.com/v2"
+GUMROAD_ACCESS_TOKEN = os.getenv("GUMROAD_ACCESS_TOKEN")
+# Set from Gumroad's own webhook config if/when they issue one; verification
+# is skipped (not spoofable-safe on its own) when unset — see the module
+# docstring on why the real trust boundary is the authenticated API fetch.
+GUMROAD_WEBHOOK_SECRET = os.getenv("GUMROAD_WEBHOOK_SECRET")
+# The seller's Gumroad subdomain, e.g. "aegis" for aegis.gumroad.com.
+GUMROAD_SELLER_SUBDOMAIN = os.getenv("GUMROAD_SELLER_SUBDOMAIN")
 
-# Where Lemon Squeezy should bounce the browser back to after checkout.
-# Must be the deployed frontend origin in production.
+# Where the browser lands after checkout. Gumroad doesn't support a
+# redirect-on-success URL per checkout the way Stripe/LS do (there's a
+# per-*product* "custom receipt / redirect" setting in the Gumroad
+# dashboard instead) - FRONTEND_URL is still used for the portal link.
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-# Variant ID env vars are set once the user creates the two subscription
-# Variants in the Lemon Squeezy Dashboard (test mode first, then swapped to
-# live IDs when ready to launch — same env var names either way).
-LEMONSQUEEZY_VARIANT_STARTER = os.getenv("LEMONSQUEEZY_VARIANT_STARTER")
-LEMONSQUEEZY_VARIANT_PRO = os.getenv("LEMONSQUEEZY_VARIANT_PRO")
+# Product permalink (the part after /l/ in the product URL) for each paid
+# tier - set once the two Gumroad products exist.
+GUMROAD_PRODUCT_STARTER = os.getenv("GUMROAD_PRODUCT_STARTER")
+GUMROAD_PRODUCT_PRO = os.getenv("GUMROAD_PRODUCT_PRO")
 
 # Monthly analysis caps per tier. "Free" needs no gateway involvement at all.
 # Pro's extra `max_agent_analyses` raises how many flagged flows in a single
@@ -67,14 +82,14 @@ TIER_LIMITS = {
     "pro":     {"monthly_analyses": 1000, "max_agent_analyses": 15, "label": "Pro"},
 }
 
-# tier name -> Lemon Squeezy Variant ID, and the reverse, built once at
-# import time. A tier whose variant env var isn't set yet (e.g. mid-setup)
+# tier name -> Gumroad product permalink, and the reverse, built once at
+# import time. A tier whose product env var isn't set yet (e.g. mid-setup)
 # is simply unavailable for checkout rather than crashing the app.
-_TIER_TO_VARIANT = {
-    "starter": LEMONSQUEEZY_VARIANT_STARTER,
-    "pro": LEMONSQUEEZY_VARIANT_PRO,
+_TIER_TO_PRODUCT = {
+    "starter": GUMROAD_PRODUCT_STARTER,
+    "pro": GUMROAD_PRODUCT_PRO,
 }
-_VARIANT_TO_TIER = {variant: tier for tier, variant in _TIER_TO_VARIANT.items() if variant}
+_PRODUCT_TO_TIER = {product: tier for tier, product in _TIER_TO_PRODUCT.items() if product}
 
 
 def next_billing_period(dt: datetime) -> datetime:
@@ -82,14 +97,6 @@ def next_billing_period(dt: datetime) -> datetime:
     if dt.month == 12:
         return dt.replace(year=dt.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
     return dt.replace(month=dt.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
-
-
-def _ls_headers() -> dict:
-    return {
-        "Accept": "application/vnd.api+json",
-        "Content-Type": "application/vnd.api+json",
-        "Authorization": f"Bearer {LEMONSQUEEZY_API_KEY}",
-    }
 
 
 # ==============================================================================
@@ -177,102 +184,118 @@ def max_agent_analyses_for(customer: Customer) -> int:
 
 
 # ==============================================================================
-# LEMON SQUEEZY CHECKOUT / PORTAL
+# GUMROAD CHECKOUT / "PORTAL"
 # ==============================================================================
 
 def create_checkout_session(customer: Customer, tier: str) -> str:
-    variant_id = _TIER_TO_VARIANT.get(tier)
-    if not variant_id:
+    """
+    No API call — a Gumroad checkout is just a URL. `wanted=true` sends the
+    browser straight to the payment form instead of the product landing
+    page; `email=` prefills (not locks) the buyer's email, which is how
+    the webhook later matches the sale back to this customer (see
+    app/webhooks.py) — if they change the email at checkout, the match
+    will fail and the upgrade won't apply, which is a known tradeoff of
+    Gumroad's simpler checkout model.
+    """
+    permalink = _TIER_TO_PRODUCT.get(tier)
+    if not permalink:
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown or unconfigured tier '{tier}'. Valid tiers: {list(_TIER_TO_VARIANT)}",
+            detail=f"Unknown or unconfigured tier '{tier}'. Valid tiers: {list(_TIER_TO_PRODUCT)}",
         )
 
-    if not LEMONSQUEEZY_API_KEY or not LEMONSQUEEZY_STORE_ID:
-        raise HTTPException(
-            status_code=500,
-            detail="Billing is not configured (LEMONSQUEEZY_API_KEY / LEMONSQUEEZY_STORE_ID missing).",
-        )
+    if not GUMROAD_SELLER_SUBDOMAIN:
+        raise HTTPException(status_code=500, detail="Billing is not configured (GUMROAD_SELLER_SUBDOMAIN missing).")
 
-    payload = {
-        "data": {
-            "type": "checkouts",
-            "attributes": {
-                "checkout_data": {
-                    "email": customer.email,
-                    # This is how the webhook maps a completed checkout back
-                    # to a customer row without any other lookup — Lemon
-                    # Squeezy echoes `custom` back in every subscription
-                    # webhook's meta.custom_data.
-                    "custom": {"aegis_customer_id": customer.id, "tier": tier},
-                },
-                "product_options": {
-                    "redirect_url": f"{FRONTEND_URL}/account?checkout=success",
-                },
-            },
-            "relationships": {
-                "store": {"data": {"type": "stores", "id": str(LEMONSQUEEZY_STORE_ID)}},
-                "variant": {"data": {"type": "variants", "id": str(variant_id)}},
-            },
-        }
-    }
+    from urllib.parse import quote
 
-    try:
-        resp = requests.post(
-            f"{LEMONSQUEEZY_API_BASE}/checkouts",
-            json=payload,
-            headers=_ls_headers(),
-            timeout=15,
-        )
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        logger.error(f"Lemon Squeezy checkout creation failed for customer {customer.id}: {e}")
-        raise HTTPException(status_code=502, detail="Could not start checkout. Please try again in a moment.")
-
-    return resp.json()["data"]["attributes"]["url"]
+    return (
+        f"https://{GUMROAD_SELLER_SUBDOMAIN}.gumroad.com/l/{permalink}"
+        f"?email={quote(customer.email)}&wanted=true"
+    )
 
 
 def create_portal_session(customer: Customer) -> str:
     """
-    Lemon Squeezy doesn't have a single "create a portal session" endpoint
-    like Stripe's Billing Portal — each subscription carries its own
-    `urls.customer_portal` link. Fetch the subscription fresh so the link
-    is current rather than caching a possibly-stale one from webhook time.
+    Gumroad has no API for a personalized "manage billing" deep link.
+    Subscribers manage/cancel from the link in their purchase receipt
+    email, or by signing into gumroad.com/library with the email they
+    bought with — this returns that generic library URL, not a session
+    scoped to this specific customer.
     """
-    if not customer.ls_subscription_id:
+    if not customer.gumroad_subscription_id:
         raise HTTPException(
             status_code=400,
             detail="No billing account yet — subscribe to a paid plan first.",
         )
 
-    if not LEMONSQUEEZY_API_KEY:
-        raise HTTPException(status_code=500, detail="Billing is not configured (LEMONSQUEEZY_API_KEY missing).")
+    return "https://app.gumroad.com/library"
+
+
+def tier_for_product(product_id: str | None, product_permalink: str | None) -> str | None:
+    """Products are matched by permalink (what GUMROAD_PRODUCT_* holds) with
+    a product_id fallback, since either may show up depending on the
+    Gumroad API response shape for a given field."""
+    if product_permalink and product_permalink in _PRODUCT_TO_TIER:
+        return _PRODUCT_TO_TIER[product_permalink]
+    if product_id and product_id in _PRODUCT_TO_TIER:
+        return _PRODUCT_TO_TIER[product_id]
+    return None
+
+
+def fetch_verified_sale(sale_id: str) -> dict | None:
+    """
+    The actual trust boundary for the Gumroad webhook: re-fetch the sale
+    from Gumroad's authenticated API using our own access token, rather
+    than trusting whatever the ping payload claims. Returns the verified
+    sale dict, or None if it doesn't exist / isn't ours / the call fails.
+    """
+    if not GUMROAD_ACCESS_TOKEN:
+        logger.error("GUMROAD_ACCESS_TOKEN not configured — cannot verify webhook, refusing to trust it blindly.")
+        return None
 
     try:
         resp = requests.get(
-            f"{LEMONSQUEEZY_API_BASE}/subscriptions/{customer.ls_subscription_id}",
-            headers=_ls_headers(),
-            timeout=15,
+            f"{GUMROAD_API_BASE}/sales/{sale_id}",
+            params={"access_token": GUMROAD_ACCESS_TOKEN},
+            timeout=10,
         )
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            logger.warning(f"Gumroad sale verification failed for sale_id={sale_id}: HTTP {resp.status_code}")
+            return None
+        data = resp.json()
+        if not data.get("success"):
+            logger.warning(f"Gumroad sale verification returned success=false for sale_id={sale_id}")
+            return None
+        return data.get("purchase") or data.get("sale") or data
     except requests.RequestException as e:
-        logger.error(f"Lemon Squeezy portal lookup failed for customer {customer.id}: {e}")
-        raise HTTPException(status_code=502, detail="Could not open the billing portal. Please try again in a moment.")
-
-    url = resp.json()["data"]["attributes"]["urls"]["customer_portal"]
-    return url
+        logger.error(f"Gumroad sale verification request failed for sale_id={sale_id}: {e}")
+        return None
 
 
-def tier_for_variant_id(variant_id) -> str | None:
-    return _VARIANT_TO_TIER.get(str(variant_id))
-
-
-def verify_webhook_signature(raw_body: bytes, signature_header: str | None) -> bool:
+def fetch_verified_subscription_sale(subscription_id: str) -> dict | None:
     """
-    Lemon Squeezy signs webhooks as an HMAC-SHA256 hex digest of the raw
-    body using the store's signing secret, sent in the X-Signature header.
+    Same trust boundary as fetch_verified_sale(), for pings that only carry
+    a subscription_id (cancellation/subscription_ended/subscription_restarted
+    don't come with a fresh sale_id) — used to re-derive which product/tier
+    a subscription belongs to, e.g. on subscription_restarted.
     """
-    if not LEMONSQUEEZY_WEBHOOK_SECRET or not signature_header:
-        return False
-    digest = hmac.new(LEMONSQUEEZY_WEBHOOK_SECRET.encode(), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(digest, signature_header)
+    if not GUMROAD_ACCESS_TOKEN:
+        logger.error("GUMROAD_ACCESS_TOKEN not configured — cannot verify webhook, refusing to trust it blindly.")
+        return None
+
+    try:
+        resp = requests.get(
+            f"{GUMROAD_API_BASE}/sales",
+            params={"access_token": GUMROAD_ACCESS_TOKEN, "subscription_id": subscription_id},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            logger.warning(f"Gumroad subscription lookup failed for subscription_id={subscription_id}: HTTP {resp.status_code}")
+            return None
+        data = resp.json()
+        sales = data.get("sales") or []
+        return sales[0] if sales else None
+    except requests.RequestException as e:
+        logger.error(f"Gumroad subscription lookup request failed for subscription_id={subscription_id}: {e}")
+        return None

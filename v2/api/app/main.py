@@ -520,9 +520,9 @@ async def list_detections(
 
 
 # ==============================================================================
-# BILLING — Lemon Squeezy checkout / customer portal / usage status. The
-# frontend BFF proxies to these with the customer's API key; the Lemon
-# Squeezy API key never leaves the backend (see app/billing.py).
+# BILLING — Gumroad checkout / "portal" / usage status. The frontend BFF
+# proxies to these with the customer's API key; the Gumroad access token
+# never leaves the backend (see app/billing.py).
 # ==============================================================================
 
 class CheckoutRequest(BaseModel):
@@ -547,7 +547,7 @@ async def billing_status(
         "usage_count": customer.usage_count,
         "usage_limit": limits["monthly_analyses"],
         "usage_reset_date": customer.usage_reset_date.isoformat() if customer.usage_reset_date else None,
-        "has_billing_account": bool(customer.ls_customer_id),
+        "has_billing_account": bool(customer.gumroad_subscription_id),
     }
 
 
