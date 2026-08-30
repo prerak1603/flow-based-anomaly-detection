@@ -16,7 +16,7 @@ import asyncio
 import logging
 import time
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime
@@ -34,9 +34,19 @@ from app.parsers.universal import UniversalParser
 from app.context.attribution import get_attack_context
 from app.context.agent import analyze_threat
 
-from app.db import get_db, init_db, Customer, Upload, Detection
+from app.db import get_db, Customer, Upload, Detection
 from app.auth import get_current_customer
+from app.migrate import run_migrations
+from app.billing import (
+    check_and_reserve_usage,
+    create_checkout_session,
+    create_portal_session,
+    max_agent_analyses_for,
+    TIER_LIMITS,
+)
+from app.alerts import send_critical_alert
 from app.webhooks import router as webhooks_router
+from pydantic import BaseModel
 
 # ==============================================================================
 # LOGGING
@@ -100,7 +110,8 @@ async def log_requests(request: Request, call_next):
 model_service = None
 parser_service = UniversalParser()
 
-MAX_AGENT_ANALYSES_PER_REQUEST = 8
+# Per-tier cap on how many flagged flows in a single /analyze call get a
+# full agent narrative — see billing.TIER_LIMITS / max_agent_analyses_for.
 
 
 @app.on_event("startup")
@@ -109,8 +120,8 @@ async def startup_event():
     global model_service
 
     logger.info("=" * 60)
-    logger.info("Initializing database (creating tables if needed)...")
-    init_db()
+    logger.info("Initializing database (creating tables, running migrations)...")
+    run_migrations()
     logger.info("Database ready!")
 
     logger.info("Loading Aegis AI v2 Ensemble Model...")
@@ -198,7 +209,7 @@ async def _analyze_one_flow(df, predictions: dict, flow: dict) -> tuple[int, dic
     calls (the agent's LLM step goes through langchain-anthropic's sync
     `ChatAnthropic.invoke`, which is a blocking HTTP request under the hood).
     Wrapping the blocking work in `asyncio.to_thread` lets `asyncio.gather`
-    run up to MAX_AGENT_ANALYSES_PER_REQUEST of these concurrently — each
+    run up to the customer's tier-based agent cap of these concurrently — each
     Anthropic call spends most of its time waiting on the network, so
     threads free the event loop instead of serializing that wait 8x.
     """
@@ -242,8 +253,9 @@ async def _analyze_one_flow(df, predictions: dict, flow: dict) -> tuple[int, dic
 @limiter.limit("5/minute")
 async def analyze_log(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    customer: Customer = Depends(get_current_customer),
+    customer: Customer = Depends(check_and_reserve_usage),
     db: Session = Depends(get_db),
 ):
     """
@@ -252,6 +264,11 @@ async def analyze_log(
     is written to the DB tagged with customer.id — this is the one
     and only place in the request that data gets attached to a tenant,
     and every downstream read (see /history) filters by that same id.
+
+    `check_and_reserve_usage` replaces the plain `get_current_customer`
+    dependency here (and only here): it resolves the customer exactly the
+    same way, then enforces the customer's monthly tier cap before any of
+    the pipeline below runs, returning 402 if they're over their limit.
     """
     global model_service, parser_service
 
@@ -350,8 +367,13 @@ async def analyze_log(
         db.commit()
         db.refresh(upload_row)
 
+        # Pro customers get more of their flagged flows through the full
+        # agent narrative per request ("priority narrative generation") —
+        # everything else about the pipeline call below is identical.
+        agent_cap = max_agent_analyses_for(customer)
+
         attack_flows_sorted = sorted(attack_flows, key=lambda x: x["confidence"], reverse=True)
-        flows_for_agent = attack_flows_sorted[:MAX_AGENT_ANALYSES_PER_REQUEST]
+        flows_for_agent = attack_flows_sorted[:agent_cap]
 
         # Run the agent (Anthropic call included) for all flows concurrently
         # instead of one after another — this was the sequential loop that
@@ -361,6 +383,7 @@ async def analyze_log(
         )
 
         ai_analyses = []
+        critical_detections = []  # plain dicts, for the alert background task below
         for row_index, pred, agent_report in flow_results:
             ai_analyses.append({"row": row_index, "report": agent_report})
 
@@ -387,7 +410,19 @@ async def analyze_log(
             )
             db.add(detection_row)
 
+            if severity == "CRITICAL":
+                critical_detections.append({
+                    "attack_type": pred["prediction"],
+                    "confidence": pred["confidence"],
+                    "narrative": narrative,
+                })
+
         db.commit()
+
+        # Best-effort Slack/email alert — runs after the response is sent,
+        # never adds latency and never fails the request (see app/alerts.py).
+        if critical_detections and (customer.slack_webhook_url or customer.alert_email):
+            background_tasks.add_task(send_critical_alert, customer, critical_detections)
 
         return {
             "upload_id": upload_row.id,
@@ -403,7 +438,7 @@ async def analyze_log(
                 "note": (
                     f"Full AI agent analysis generated for the top "
                     f"{len(ai_analyses)} highest-confidence detections."
-                    if len(attack_flows_sorted) > MAX_AGENT_ANALYSES_PER_REQUEST
+                    if len(attack_flows_sorted) > agent_cap
                     else "Full AI agent analysis generated for all detected attacks."
                 ),
                 "reports": ai_analyses,
@@ -482,6 +517,111 @@ async def list_detections(
         }
         for d in detections
     ]
+
+
+# ==============================================================================
+# BILLING — Lemon Squeezy checkout / customer portal / usage status. The
+# frontend BFF proxies to these with the customer's API key; the Lemon
+# Squeezy API key never leaves the backend (see app/billing.py).
+# ==============================================================================
+
+class CheckoutRequest(BaseModel):
+    tier: str  # "starter" | "pro"
+
+
+class AlertSettingsUpdate(BaseModel):
+    slack_webhook_url: str | None = None
+    alert_email: str | None = None
+
+
+@app.get("/billing/status")
+@limiter.limit("60/minute")
+async def billing_status(
+    request: Request,
+    customer: Customer = Depends(get_current_customer),
+):
+    limits = TIER_LIMITS.get(customer.tier, TIER_LIMITS["free"])
+    return {
+        "tier": customer.tier,
+        "tier_label": limits["label"],
+        "usage_count": customer.usage_count,
+        "usage_limit": limits["monthly_analyses"],
+        "usage_reset_date": customer.usage_reset_date.isoformat() if customer.usage_reset_date else None,
+        "has_billing_account": bool(customer.ls_customer_id),
+    }
+
+
+@app.post("/billing/checkout-session")
+@limiter.limit("20/minute")
+async def billing_checkout_session(
+    request: Request,
+    body: CheckoutRequest,
+    customer: Customer = Depends(get_current_customer),
+):
+    if body.tier not in ("starter", "pro"):
+        raise HTTPException(status_code=400, detail="tier must be 'starter' or 'pro'")
+    url = create_checkout_session(customer, body.tier)
+    return {"url": url}
+
+
+@app.post("/billing/portal-session")
+@limiter.limit("20/minute")
+async def billing_portal_session(
+    request: Request,
+    customer: Customer = Depends(get_current_customer),
+):
+    url = create_portal_session(customer)
+    return {"url": url}
+
+
+# ==============================================================================
+# ALERT SETTINGS — per-customer opt-in for the CRITICAL-severity Slack/email
+# alert fired at the end of /analyze (see app/alerts.py).
+# ==============================================================================
+
+@app.get("/account/alert-settings")
+@limiter.limit("60/minute")
+async def get_alert_settings(
+    request: Request,
+    customer: Customer = Depends(get_current_customer),
+):
+    return {
+        "slack_webhook_url": customer.slack_webhook_url,
+        "alert_email": customer.alert_email,
+    }
+
+
+@app.patch("/account/alert-settings")
+@limiter.limit("20/minute")
+async def update_alert_settings(
+    request: Request,
+    body: AlertSettingsUpdate,
+    customer: Customer = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    if body.slack_webhook_url is not None:
+        url = body.slack_webhook_url.strip()
+        if url and not url.startswith("https://hooks.slack.com/"):
+            raise HTTPException(
+                status_code=400,
+                detail="slack_webhook_url must be a real Slack incoming webhook URL "
+                       "(starts with https://hooks.slack.com/), or empty to clear it.",
+            )
+        customer.slack_webhook_url = url or None
+
+    if body.alert_email is not None:
+        email = body.alert_email.strip()
+        if email and ("@" not in email or "." not in email.split("@")[-1]):
+            raise HTTPException(status_code=400, detail="alert_email doesn't look like a valid email address.")
+        customer.alert_email = email or None
+
+    db.add(customer)
+    db.commit()
+
+    return {
+        "slack_webhook_url": customer.slack_webhook_url,
+        "alert_email": customer.alert_email,
+    }
 
 
 # ==============================================================================

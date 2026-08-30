@@ -63,6 +63,24 @@ class Customer(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # --- Billing / tier enforcement -------------------------------------
+    # tier is the source of truth for what a customer can do; it's kept in
+    # sync with Lemon Squeezy via the /webhooks/lemonsqueezy handler, not
+    # read from the gateway on every request.
+    tier = Column(String, nullable=False, default="free")
+    usage_count = Column(Integer, nullable=False, default=0)
+    # First "period end" a brand-new customer sees; the tier-check
+    # dependency lazily rolls this forward (and zeroes usage_count) once
+    # `now >= usage_reset_date`, so no cron job is required.
+    usage_reset_date = Column(DateTime, default=datetime.utcnow)
+    # Lemon Squeezy (merchant of record — see app/billing.py for why).
+    ls_customer_id = Column(String, nullable=True, index=True)
+    ls_subscription_id = Column(String, nullable=True)
+
+    # --- Alerting (per-customer opt-in, set from /account) ---------------
+    slack_webhook_url = Column(String, nullable=True)
+    alert_email = Column(String, nullable=True)
+
     uploads = relationship("Upload", back_populates="customer")
     detections = relationship("Detection", back_populates="customer")
 
