@@ -67,6 +67,42 @@ class Customer(Base):
     detections = relationship("Detection", back_populates="customer")
 
 
+class CustomerSettings(Base):
+    """
+    One row per customer (one-to-one, not one-to-many — `customer_id` is
+    unique below) holding their overrides for the otherwise-global
+    severity/recommendation rules in context/agent.py. Every field is
+    nullable and every consumer of this table treats null as "use the
+    current global default" — a customer who never visits /settings gets
+    byte-identical behavior to before this table existed. See
+    app/settings.py for how a row here gets resolved into the plain dict
+    that's threaded into the LangGraph agent's state.
+    """
+    __tablename__ = "customer_settings"
+
+    id = Column(String, primary_key=True, default=generate_id)
+    customer_id = Column(String, ForeignKey("customers.id"), nullable=False, unique=True, index=True)
+
+    # null/empty list = every attack class is enabled (today's behavior).
+    # Otherwise, a list of attack-class strings (validated against the
+    # live model's classes in app/settings.py, not hardcoded here).
+    enabled_attack_classes = Column(JSON, nullable=True)
+
+    # null = today's hardcoded ladder (HIGH >= 0.95, MEDIUM >= 0.75, no
+    # confidence-only path to CRITICAL). Any subset of
+    # {"CRITICAL": x, "HIGH": y, "MEDIUM": z} the customer has set.
+    severity_thresholds = Column(JSON, nullable=True)
+
+    # null/empty = today's rule-based ACTION_RULES for every class.
+    # {"<AttackClass>": {"mode": "default"|"alert_only"|"auto_block"|"custom", "text": "..."}}
+    action_overrides = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    customer = relationship("Customer")
+
+
 class Upload(Base):
     """One row per file a customer submitted to /analyze."""
     __tablename__ = "uploads"
