@@ -12,6 +12,8 @@ Author      : Prerak Nain
 ================================================================================
 """
 
+import logging
+
 import pandas as pd
 from typing import Dict, List, Optional
 
@@ -20,6 +22,8 @@ from app.context.sliding_window import (
     prepare_timestamps,
     build_sliding_windows_host,
 )
+
+logger = logging.getLogger("aegis")
 
 
 # ==============================================================================
@@ -50,24 +54,61 @@ PORT_RISK_NOTES = {
 # IP ATTRIBUTION DETECTION
 # ==============================================================================
 
+def _normalize_col(col: str) -> str:
+    """
+    Normalize a column name for alias matching: lowercase, strip, and
+    collapse the common separator conventions (space/underscore/hyphen/dot)
+    to a single space, so "Src IP", "src_ip", "SRC-IP", and "id.orig_h" all
+    compare the same way regardless of which tool produced the file.
+    "SourceIP"-style no-separator variants are handled as explicit aliases
+    below rather than here, since there's no separator to collapse.
+    """
+    c = str(col).strip().lower()
+    for sep in ("_", "-", "."):
+        c = c.replace(sep, " ")
+    return c
+
+
+# Every variant here maps to the SAME real-world field via name, regardless
+# of position in the file — a column matches by what it's called, not by
+# where it sits among the other columns. Previously this only matched
+# "source ip" / "src_ip" / "id.orig_h" / "sa" (and the destination
+# equivalents) — genuine variants like "Src IP", "source_ip", and
+# "SourceIP" fell through and were silently treated as "no IP data".
+SRC_IP_ALIASES = {"source ip", "src ip", "sourceip", "srcip", "id orig h", "sa"}
+DST_IP_ALIASES = {"destination ip", "dst ip", "destinationip", "dstip", "id resp h", "da"}
+
+
+def detect_ip_columns(df: pd.DataFrame) -> Optional[Dict[str, str]]:
+    """
+    Scan by column NAME for source/destination IP columns — not by
+    position or exact casing. Returns the actual column names found, e.g.
+    {"source": "Source IP", "destination": "Destination IP"}, so a caller
+    (or a log line, or the API response) can state plainly what was
+    detected instead of it being an opaque yes/no. Returns None if either
+    side is missing.
+    """
+    normalized = {_normalize_col(c): c for c in df.columns}
+
+    src_col = next((normalized[a] for a in SRC_IP_ALIASES if a in normalized), None)
+    dst_col = next((normalized[a] for a in DST_IP_ALIASES if a in normalized), None)
+
+    if src_col and dst_col:
+        return {"source": src_col, "destination": dst_col}
+    return None
+
+
 def has_ip_attribution(df: pd.DataFrame) -> bool:
     """
     Check whether the uploaded data includes source/destination IP columns.
 
     Returns True for Zeek conn.log format (id.orig_h/id.resp_h) or an
-    unmodified CICFlowMeter export (Source IP/Destination IP). Returns
-    False for anonymized public benchmark data like CIC-IDS-2017, which
-    strips IP columns before release.
+    unmodified CICFlowMeter export (Source IP/Destination IP), under any
+    of the common naming variants (see SRC_IP_ALIASES/DST_IP_ALIASES).
+    Returns False for anonymized public benchmark data like CIC-IDS-2017,
+    which strips IP columns before release.
     """
-    cols_lower = [str(c).strip().lower() for c in df.columns]
-
-    src_markers = {"source ip", "src_ip", "id.orig_h", "sa"}
-    dst_markers = {"destination ip", "dst_ip", "id.resp_h", "da"}
-
-    has_src = any(c in cols_lower for c in src_markers)
-    has_dst = any(c in cols_lower for c in dst_markers)
-
-    return has_src and has_dst
+    return detect_ip_columns(df) is not None
 
 
 def _find_column(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
@@ -86,17 +127,28 @@ def _find_column(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
 def extract_full_attribution(df: pd.DataFrame, row_index: int) -> Dict:
     """
     Full attribution using sliding-window host-centric analysis.
-    Requires src_ip, dst_ip, and timestamp columns to be present.
+
+    The IP lookup itself only needs src_ip/dst_ip (via schema
+    normalization); a timestamp column is only needed for the *behavioral*
+    (sliding-window) profiling on top of that. These used to be gated
+    together — a normalize_schema()+prepare_timestamps() pair wrapped in
+    one try/except — so a file with real IP columns but no Timestamp
+    column (common; CICFlowMeter exports frequently omit it) raised inside
+    prepare_timestamps(), got swallowed by that except, and the caller
+    (get_attack_context) saw `available: False` and fell all the way back
+    to degraded/port-only mode — discarding the IP data that was actually
+    right there. Fixed by resolving host_ip first (schema-only, no
+    timestamp needed) and only gating the sliding-window step specifically
+    on timestamps, degrading gracefully to "IP known, no behavioral
+    context" instead of "no IP data at all" when timestamps are missing.
     """
     try:
         working = normalize_schema(df.copy(), schema="auto")
-        working = prepare_timestamps(working)
     except Exception as e:
-        return {
-            "mode": "full",
-            "available": False,
-            "reason": f"Could not normalize schema/timestamps: {e}",
-        }
+        return {"mode": "full", "available": False, "reason": f"Could not normalize schema: {e}"}
+
+    if "src_ip" not in working.columns:
+        return {"mode": "full", "available": False, "reason": "No src_ip column after schema normalization"}
 
     if row_index >= len(working):
         row_index = 0
@@ -104,8 +156,19 @@ def extract_full_attribution(df: pd.DataFrame, row_index: int) -> Dict:
     target_row = working.iloc[row_index]
     host_ip = target_row.get("src_ip")
 
-    if host_ip is None:
+    if host_ip is None or (isinstance(host_ip, float) and pd.isna(host_ip)):
         return {"mode": "full", "available": False, "reason": "No src_ip on target row"}
+
+    try:
+        working = prepare_timestamps(working)
+    except Exception as e:
+        return {
+            "mode": "full",
+            "available": True,
+            "host_ip": str(host_ip),
+            "behavioral_context": None,
+            "note": f"IP present but no usable timestamp column for windowed behavioral analysis ({e}).",
+        }
 
     # Run host-centric windows at the 1min scale — a reasonable default
     # granularity for behavioral context around a single flagged flow
@@ -204,12 +267,23 @@ def get_attack_context(df: pd.DataFrame, row_index: int) -> Dict:
     """
     Main entry point. Automatically selects full or degraded attribution
     mode based on what data is actually present in the uploaded file.
-    """
-    if has_ip_attribution(df):
-        result = extract_full_attribution(df, row_index)
-        if result.get("available"):
-            return result
-        # Full mode was attempted but failed for some reason — fall back
-        return extract_port_attribution(df, row_index)
 
-    return extract_port_attribution(df, row_index)
+    Every result carries `ip_columns_detected` — the actual column names
+    matched (e.g. {"source": "Source IP", "destination": "Destination IP"}),
+    or None if neither side was found — so which columns drove the mode
+    decision is visible in the API response and logs, not just inferrable
+    from which mode came back.
+    """
+    ip_columns = detect_ip_columns(df)
+    logger.info(f"Attribution: ip_columns_detected={ip_columns}")
+
+    if ip_columns:
+        result = extract_full_attribution(df, row_index)
+        if not result.get("available"):
+            # Full mode was attempted but failed for some reason — fall back
+            result = extract_port_attribution(df, row_index)
+    else:
+        result = extract_port_attribution(df, row_index)
+
+    result["ip_columns_detected"] = ip_columns
+    return result
