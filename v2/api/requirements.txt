@@ -19,3 +19,4 @@ sqlalchemy==2.0.23
 
 slowapi==0.1.9
 svix==1.61.0
+requests==2.32.3
