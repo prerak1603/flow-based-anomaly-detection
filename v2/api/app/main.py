@@ -14,6 +14,7 @@ Version: 2.1.1 — adds rate limiting, locked-down CORS, structured logging,
 
 import asyncio
 import logging
+import os
 import time
 import numpy as np
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
@@ -56,8 +57,10 @@ app = FastAPI(
     title="Aegis AI v2",
     description="Production-ready network intrusion detection API",
     version="2.1.1",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    # Interactive docs/schema are disabled in production; set ENABLE_DOCS=1 to expose.
+    docs_url="/docs" if os.getenv("ENABLE_DOCS") == "1" else None,
+    redoc_url="/redoc" if os.getenv("ENABLE_DOCS") == "1" else None,
+    openapi_url="/openapi.json" if os.getenv("ENABLE_DOCS") == "1" else None,
 )
 app.include_router(webhooks_router)
 # --- Rate limiting ------------------------------------------------------------
@@ -81,6 +84,16 @@ app.add_middleware(
 )
 
 # --- Lightweight request logging (timing + status, no bodies/secrets) --------
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    return response
+
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time.time()
